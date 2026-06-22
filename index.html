@@ -516,9 +516,15 @@ body.capturing .wwas-item-actions{display:none!important}
 .alert-map-legend-title{font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
 .alert-map-legend-item{display:flex;align-items:center;gap:6px;margin:2px 0}
 .alert-map-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
-.alert-map-controls{position:absolute;top:10px;right:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:8px 10px;font-size:10px;color:var(--t2);backdrop-filter:blur(12px)}
+.alert-map-controls{position:absolute;top:10px;right:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;backdrop-filter:blur(12px);max-width:200px}
 .alert-map-controls label{display:flex;align-items:center;gap:5px;cursor:pointer;margin:2px 0;font-size:9px}
 .alert-map-controls input{accent-color:var(--acc);width:12px;height:12px}
+/* Collapsible toggle header for the controls panel - click to expand/collapse */
+.alert-map-controls-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;cursor:pointer;font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.04em;user-select:none}
+.alert-map-controls-toggle i{transition:transform .2s}
+.alert-map-controls.collapsed .alert-map-controls-toggle i{transform:rotate(-90deg)}
+.alert-map-controls-body{padding:0 10px 8px 10px;display:block}
+.alert-map-controls.collapsed .alert-map-controls-body{display:none}
 .alert-map-count{position:absolute;top:10px;left:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--acc);border-radius:var(--rs);padding:6px 12px;font-size:10px;color:var(--acc);font-weight:600;backdrop-filter:blur(12px)}
 .snd-hour-tab{display:flex;align-items:center;gap:2px}
 .snd-hour-check{display:flex;align-items:center;gap:3px;cursor:pointer;font-size:9px;font-weight:600;color:inherit}
@@ -890,7 +896,7 @@ var PANELS=[
     id:'alertMap',title:'Alert Polygon Map',icon:'fa-map-location-dot',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-amap',refreshFn:'fAlertMap',collapsible:true,tab:'current',
-    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR - Grand Rapids</option><option value="KIWX">KIWX - Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
+    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><div class="alert-map-controls-toggle" onclick="var c=document.getElementById(\'alertMapControls\');c.classList.toggle(\'collapsed\')"><span><i class="fas fa-sliders"></i> Layers</span><i class="fas fa-chevron-down"></i></div><div class="alert-map-controls-body"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR - Grand Rapids</option><option value="KIWX">KIWX - Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
   },
   /* 4d. WWA Summary (text-based active alerts with category filters) */
   {
@@ -1068,7 +1074,7 @@ var PANELS=[
   {
     id:'roadcams',title:'Road Weather Cameras',icon:'fa-video',
     badge:'MiDrive',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'spotting',
+    updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'current',
     body:'<div id="rcGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>'
   },
   /* 21. Facebook (responsive, always last) */
@@ -4802,10 +4808,13 @@ async function refreshAll(){
     /* Always refresh Tab 1 (Current Conditions) panels - these run regardless
        of which tab is active so alerts/WWA info stays live in the background.
        This includes: current/hourly/7day/threats (fWx), per-location alerts
-       (fAl), alert polygon map (fAlertMap), WWA summary (fWWASummary), and
-       the static WWA map (rWWA). */
+       (fAl), alert polygon map (fAlertMap), WWA summary (fWWASummary), the
+       static WWA map (rWWA), and road weather cameras (rRoadCams - moved
+       to Current Conditions since it's part of the at-a-glance view). */
     var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA'];
+    var alwaysSyncFns=['rRoadCams'];
     await Promise.all(alwaysFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
+    alwaysSyncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
 
     /* Refresh the active tab's panels only - saves API calls and bandwidth
        for tabs the user isn't currently viewing. */
@@ -4819,7 +4828,7 @@ async function refreshAll(){
       current:[],
       nws:['rRadar','rMeteo'],
       spc:['rSPCImgs','rHazards'],
-      spotting:['rSfcMap','rLightning','rRoadCams','rSkewT']
+      spotting:['rSfcMap','rLightning','rSkewT']
     };
     var asyncFns=tabAsyncFns[activeTab]||[];
     var syncFns=tabSyncFns[activeTab]||[];
