@@ -809,7 +809,7 @@ var PANELS=[
     id:'alertMap',title:'Alert Polygon Map',icon:'fa-map-location-dot',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-amap',refreshFn:'fAlertMap',collapsible:true,
-    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Borders</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR — Grand Rapids</option><option value="KIWX">KIWX — Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
+    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR — Grand Rapids</option><option value="KIWX">KIWX — Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
   },
   /* 4d. WWA Summary (text-based active alerts with category filters) */
   {
@@ -2458,7 +2458,7 @@ function senvCard(label,val,unit,badge){
    Layer toggles for Warnings/Watches/Advisories/County Borders.
    Auto-refreshes every 5 minutes. */
 var alertMapInstance=null;
-var alertMapLayers={warnings:[],watches:[],advisories:[],counties:null,radarRefl:null,radarVel:null};
+var alertMapLayers={warnings:[],watches:[],advisories:[],counties:null,countyLabels:[],radarRefl:null,radarVel:null};
 var COUNTY_GEOJSON=null;
 
 /* NWS alert color logic — matches the official NWS Hazards Map color codes.
@@ -2636,6 +2636,78 @@ function initAlertMap(){
    Source: api.weather.gov/zones/county (MIC005, MIC077, MIC159) */
 var TRI_COUNTY_GEOJSON={"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Allegan County","zone":"MIC005","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-86.000099,42.769012],[-85.965393,42.76881],[-85.890793,42.767513],[-85.841309,42.767513],[-85.782494,42.76812],[-85.732399,42.768311],[-85.676399,42.768211],[-85.663795,42.768013],[-85.627693,42.768211],[-85.553398,42.768013],[-85.545395,42.768112],[-85.545494,42.740711],[-85.545097,42.703213],[-85.545097,42.681511],[-85.544495,42.660213],[-85.544197,42.638313],[-85.5439,42.631111],[-85.5438,42.609314],[-85.543495,42.598713],[-85.543098,42.591213],[-85.542999,42.522511],[-85.543297,42.508911],[-85.543198,42.491013],[-85.543396,42.483513],[-85.543495,42.466011],[-85.543495,42.44791],[-85.543198,42.42131],[-85.548195,42.421112],[-85.607193,42.420712],[-85.616997,42.420712],[-85.626099,42.421112],[-85.676094,42.420914],[-85.682396,42.420914],[-85.685898,42.421112],[-85.6894,42.420914],[-85.702599,42.420914],[-85.7155,42.421112],[-85.721695,42.420914],[-85.7491,42.421013],[-85.761299,42.420712],[-85.764496,42.420414],[-85.766998,42.420712],[-85.836998,42.420414],[-85.896797,42.419712],[-85.906593,42.419411],[-85.909996,42.419514],[-85.938095,42.419113],[-85.993393,42.418812],[-86.009499,42.418812],[-86.012299,42.419014],[-86.022194,42.419113],[-86.030396,42.418911],[-86.048393,42.418812],[-86.1017,42.418812],[-86.129295,42.419212],[-86.168396,42.419113],[-86.240898,42.419514],[-86.255997,42.419312],[-86.271896,42.419312],[-86.273994,42.419113],[-86.273323,42.420956],[-86.272186,42.422829],[-86.271252,42.425096],[-86.26915,42.428478],[-86.267202,42.432459],[-86.266922,42.433327],[-86.26448,42.437787],[-86.264264,42.438725],[-86.262192,42.442211],[-86.260674,42.446571],[-86.259094,42.449955],[-86.256683,42.456448],[-86.25631,42.458622],[-86.25521,42.46164],[-86.254296,42.465621],[-86.253517,42.467541],[-86.251816,42.473145],[-86.251692,42.47399],[-86.251135,42.47534],[-86.250638,42.477627],[-86.250031,42.479046],[-86.250031,42.480189],[-86.24971,42.480212],[-86.249519,42.481746],[-86.24915,42.482637],[-86.248657,42.485107],[-86.247208,42.490166],[-86.246445,42.499474],[-86.246016,42.500838],[-86.245491,42.504543],[-86.245495,42.505574],[-86.24485,42.509165],[-86.244606,42.511979],[-86.244824,42.513717],[-86.244789,42.514496],[-86.244453,42.515823],[-86.244514,42.517925],[-86.243835,42.519436],[-86.242361,42.526345],[-86.24227,42.527992],[-86.24153,42.5314],[-86.241254,42.533482],[-86.241257,42.536113],[-86.240547,42.540779],[-86.239685,42.544048],[-86.239348,42.546063],[-86.237836,42.55057],[-86.237098,42.55654],[-86.235771,42.561825],[-86.23528,42.564958],[-86.234631,42.566994],[-86.234601,42.568161],[-86.233673,42.569695],[-86.231293,42.575527],[-86.229719,42.578593],[-86.228081,42.583397],[-86.226997,42.587288],[-86.226539,42.589573],[-86.225983,42.59346],[-86.225613,42.594765],[-86.225645,42.596778],[-86.225987,42.599569],[-86.226051,42.601673],[-86.22692,42.606087],[-86.226952,42.607506],[-86.227729,42.611737],[-86.227979,42.61455],[-86.228256,42.615692],[-86.2286,42.61869],[-86.228264,42.623997],[-86.228453,42.626532],[-86.229293,42.63202],[-86.229385,42.633461],[-86.229324,42.635906],[-86.22905,42.637691],[-86.228119,42.641399],[-86.226639,42.644921],[-86.224037,42.649887],[-86.220169,42.655788],[-86.218063,42.659403],[-86.216019,42.664413],[-86.215614,42.666538],[-86.214317,42.670109],[-86.21376,42.672329],[-86.213546,42.674341],[-86.21376,42.677063],[-86.213173,42.678574],[-86.211624,42.681042],[-86.211037,42.683102],[-86.210171,42.685069],[-86.210171,42.686097],[-86.209645,42.687653],[-86.209614,42.688796],[-86.208654,42.69209],[-86.208344,42.694859],[-86.20797,42.696323],[-86.207848,42.699295],[-86.207321,42.700943],[-86.207047,42.707302],[-86.206703,42.709702],[-86.206985,42.711578],[-86.206894,42.713661],[-86.207047,42.717571],[-86.206833,42.719425],[-86.206929,42.724525],[-86.207395,42.726698],[-86.207272,42.729191],[-86.207489,42.739231],[-86.207463,42.747214],[-86.207806,42.748037],[-86.20793,42.749501],[-86.208397,42.751877],[-86.208397,42.754692],[-86.208183,42.756476],[-86.208305,42.762791],[-86.208807,42.765511],[-86.20921,42.766426],[-86.209211,42.767578],[-86.208855,42.767582],[-86.208694,42.767212],[-86.205498,42.767612],[-86.172798,42.768211],[-86.153793,42.768414],[-86.115723,42.768494],[-86.105125,42.768677],[-86.083618,42.768677],[-86.0811,42.768814],[-86.049095,42.769012],[-86.000099,42.769012]]]}},{"type":"Feature","properties":{"name":"Kalamazoo County","zone":"MIC077","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-85.5,42.421413],[-85.425194,42.420013],[-85.4123,42.41991],[-85.299896,42.419514],[-85.299194,42.405613],[-85.298393,42.375614],[-85.298393,42.370411],[-85.297997,42.359013],[-85.298096,42.355713],[-85.297798,42.347713],[-85.297394,42.319012],[-85.296997,42.303211],[-85.297096,42.275414],[-85.296799,42.267612],[-85.296997,42.250011],[-85.296898,42.238411],[-85.294899,42.136913],[-85.294197,42.11581],[-85.2939,42.086113],[-85.293594,42.074413],[-85.293297,42.071411],[-85.303497,42.071514],[-85.363396,42.071312],[-85.375,42.071411],[-85.405296,42.071213],[-85.473,42.071114],[-85.516899,42.070911],[-85.602295,42.070213],[-85.624397,42.070412],[-85.743095,42.069611],[-85.760895,42.069412],[-85.762695,42.069012],[-85.762993,42.075813],[-85.763298,42.09111],[-85.763794,42.126114],[-85.764496,42.157013],[-85.765297,42.208012],[-85.766098,42.240913],[-85.766197,42.255013],[-85.7659,42.308613],[-85.765594,42.318314],[-85.765297,42.342911],[-85.765297,42.368813],[-85.764999,42.381813],[-85.764297,42.401314],[-85.764496,42.420414],[-85.761299,42.420712],[-85.7491,42.421013],[-85.721695,42.420914],[-85.7155,42.421112],[-85.702599,42.420914],[-85.6894,42.420914],[-85.685898,42.421112],[-85.682396,42.420914],[-85.676094,42.420914],[-85.626099,42.421112],[-85.616997,42.420712],[-85.607193,42.420712],[-85.548195,42.421112],[-85.543198,42.42131],[-85.524895,42.421211],[-85.5,42.421413]]]}},{"type":"Feature","properties":{"name":"Van Buren County","zone":"MIC159","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-85.764297,42.401314],[-85.764999,42.381813],[-85.765297,42.368813],[-85.765297,42.342911],[-85.765594,42.318314],[-85.7659,42.308613],[-85.766197,42.255013],[-85.766098,42.240913],[-85.765297,42.208012],[-85.764496,42.157013],[-85.763794,42.126114],[-85.763298,42.09111],[-85.762993,42.075813],[-85.762695,42.069012],[-85.764595,42.069412],[-85.864494,42.069214],[-85.959694,42.069611],[-85.991798,42.069912],[-86.011299,42.070313],[-86.021599,42.070114],[-86.098198,42.070713],[-86.1147,42.071011],[-86.161095,42.071011],[-86.184395,42.071312],[-86.223,42.07151],[-86.222893,42.086014],[-86.223,42.095913],[-86.222794,42.109612],[-86.222893,42.157211],[-86.223595,42.243412],[-86.249794,42.24361],[-86.301796,42.24361],[-86.338799,42.243111],[-86.352898,42.243111],[-86.362396,42.242813],[-86.364655,42.243221],[-86.35923,42.250034],[-86.35434,42.256958],[-86.353153,42.259065],[-86.351418,42.261581],[-86.346771,42.269016],[-86.345757,42.271118],[-86.344154,42.273544],[-86.341635,42.278052],[-86.339972,42.280408],[-86.338095,42.283703],[-86.336121,42.286358],[-86.334554,42.289445],[-86.332799,42.292168],[-86.331466,42.29486],[-86.329781,42.297359],[-86.329193,42.298733],[-86.327621,42.300632],[-86.327286,42.301753],[-86.325345,42.304612],[-86.322912,42.309073],[-86.3218,42.310741],[-86.320724,42.313625],[-86.320198,42.314678],[-86.319708,42.314883],[-86.318722,42.317491],[-86.317921,42.318749],[-86.317397,42.320282],[-86.315887,42.322798],[-86.315825,42.323553],[-86.314099,42.32568],[-86.313667,42.32703],[-86.312096,42.330094],[-86.305836,42.341257],[-86.304848,42.343269],[-86.304602,42.344162],[-86.303555,42.345809],[-86.301735,42.349239],[-86.300747,42.351573],[-86.299202,42.353973],[-86.298865,42.355004],[-86.298094,42.356674],[-86.297165,42.358208],[-86.296425,42.360126],[-86.296088,42.361249],[-86.295654,42.364361],[-86.294914,42.36562],[-86.294296,42.367928],[-86.293861,42.368958],[-86.293861,42.36953],[-86.293371,42.370603],[-86.29303,42.373165],[-86.292044,42.375624],[-86.290717,42.380062],[-86.290253,42.381115],[-86.287842,42.384804],[-86.287628,42.386169],[-86.286919,42.387473],[-86.286919,42.387793],[-86.286024,42.389074],[-86.285248,42.392345],[-86.284447,42.394562],[-86.284169,42.396576],[-86.283798,42.397925],[-86.284229,42.400006],[-86.284969,42.401814],[-86.284043,42.402431],[-86.283487,42.403208],[-86.282928,42.404465],[-86.281211,42.406422],[-86.280615,42.407554],[-86.277245,42.412495],[-86.276505,42.414551],[-86.275549,42.415993],[-86.273994,42.419113],[-86.271896,42.419312],[-86.255997,42.419312],[-86.240898,42.419514],[-86.168396,42.419113],[-86.129295,42.419212],[-86.1017,42.418812],[-86.048393,42.418812],[-86.030396,42.418911],[-86.022194,42.419113],[-86.012299,42.419014],[-86.009499,42.418812],[-85.993393,42.418812],[-85.938095,42.419113],[-85.909996,42.419514],[-85.906593,42.419411],[-85.896797,42.419712],[-85.836998,42.420414],[-85.766998,42.420712],[-85.764496,42.420414],[-85.764297,42.401314]]]}}]};
 
+/* Zone geometry cache — avoids re-fetching the same NWS zone polygon on every
+   refresh. Keyed by UGC code (e.g. 'MIZ071', 'MIC159', 'LMZ846'). Persisted for
+   the lifetime of the page since zone boundaries rarely change. */
+var ZONE_GEOMETRY_CACHE={};
+
+/* Resolve a UGC code to a GeoJSON geometry object via the NWS zones API.
+   Routing rules:
+     MIC###  → county zone     (api.weather.gov/zones/county/{ugc})
+     MIZ###  → forecast zone   (api.weather.gov/zones/forecast/{ugc})
+     MIB###  → fire weather    (api.weather.gov/zones/fire/{ugc})
+     LMZ/ANZ/GMZ/PZZ/SLZ### → marine (api.weather.gov/zones/marine/{ugc})
+   Returns a Promise resolving to the geometry object, or null on failure.
+   Results are cached in ZONE_GEOMETRY_CACHE so subsequent calls are instant. */
+async function getZoneGeometry(ugc){
+  if(!ugc)return null;
+  ugc=String(ugc).toUpperCase();
+  if(ZONE_GEOMETRY_CACHE[ugc]!==undefined)return ZONE_GEOMETRY_CACHE[ugc];
+  var type='forecast';
+  if(/^MI[A-Z]\d/.test(ugc)){
+    if(ugc.charAt(2)==='C')type='county';
+    else if(ugc.charAt(2)==='Z')type='forecast';
+    else if(ugc.charAt(2)==='B')type='fire';
+    else type='forecast';
+  }else if(/^(LMZ|ANZ|GMZ|PZZ|SLZ)\d/.test(ugc)){
+    type='marine';
+  }else if(/^(EZ|NZ|HRZ)\d/.test(ugc)){
+    type='forecast';
+  }
+  var apiUrl='https://api.weather.gov/zones/'+type+'/'+ugc;
+  var result=null;
+  try{
+    var txt=await fP(apiUrl);
+    if(txt){
+      var data=JSON.parse(txt);
+      if(data&&data.geometry)result=data.geometry;
+    }
+  }catch(e){
+    console.warn('[AlertMap] Zone geometry fetch failed for',ugc,e);
+  }
+  ZONE_GEOMETRY_CACHE[ugc]=result;
+  return result;
+}
+
+/* Extract UGC zone codes from an alert feature. Looks at (in order):
+     1. alert.properties.geocode.UGC          (array of strings, e.g. ['MIZ071','MIC159'])
+     2. alert.properties.affectedZones         (array of NWS zone URLs)
+   Returns a deduped array of UGC codes (e.g. ['MIZ064','MIZ071','MIZ072']). */
+function alertUgcs(alert){
+  var ugcs=[],seen={};
+  if(!alert||!alert.properties)return ugcs;
+  var p=alert.properties;
+  if(p.geocode&&Array.isArray(p.geocode.UGC)){
+    p.geocode.UGC.forEach(function(c){
+      if(c&&!seen[c]){seen[c]=1;ugcs.push(c)}
+    });
+  }
+  if(Array.isArray(p.affectedZones)){
+    p.affectedZones.forEach(function(u){
+      if(typeof u==='string'){
+        var m=u.match(/\/zones\/[^\/]+\/([A-Z]{2,3}\d{3}[A-Z]?)/);
+        if(m&&!seen[m[1]]){seen[m[1]]=1;ugcs.push(m[1])}
+      }
+    });
+  }
+  return ugcs;
+}
+
+/* Tri-County UGC codes — used by the "Tri-County Focus" filter.
+   Includes both forecast zones (MIZ###) and county zones (MIC###) for the
+   three monitored counties: Van Buren, Allegan, Kalamazoo. */
+var FOCUS_UGCS={'MIZ064':1,'MIZ071':1,'MIZ072':1,'MIC005':1,'MIC077':1,'MIC159':1};
+
 /* Toggle radar overlay layers (reflectivity and velocity) using per-station
    NWS RIDGE GIF loops as Leaflet image overlays.
    Station selector: KGRR (Grand Rapids) or KIWX (Northern Indiana).
@@ -2689,14 +2761,42 @@ async function fAlertMap(){
   alertMapLayers.warnings=[];alertMapLayers.watches=[];alertMapLayers.advisories=[];
   /* Clear county layer if it exists */
   if(alertMapLayers.counties){alertMapInstance.removeLayer(alertMapLayers.counties);alertMapLayers.counties=null}
+  if(alertMapLayers.countyLabels){alertMapLayers.countyLabels.forEach(function(m){alertMapInstance.removeLayer(m)});alertMapLayers.countyLabels=[]}
 
-  /* Show/hide county borders based on checkbox */
-  var showCounties=document.getElementById('amLayerCounties');
-  if(showCounties&&showCounties.checked){
-    alertMapLayers.counties=L.geoJSON(TRI_COUNTY_GEOJSON,{
-      style:{color:'#a855f6',weight:2,fillColor:'#a855f6',fillOpacity:0.05,dashArray:'4,4'}
-    }).addTo(alertMapInstance);
-    alertMapLayers.counties.bindPopup(function(layer){return '<b>'+layer.feature.properties.name+'</b>'});
+  /* Always draw the Tri-County borders on top so the monitored counties
+     (Van Buren, Allegan, Kalamazoo) are instantly identifiable regardless
+     of any alert shading. Drawn AFTER alert polygons and brought to front
+     so the dotted outline stays crisp on top of the color fill. */
+  alertMapLayers.counties=L.geoJSON(TRI_COUNTY_GEOJSON,{
+    style:{color:'#a855f6',weight:2.5,fillColor:'#a855f6',fillOpacity:0,dashArray:'5,4',lineJoin:'round'},
+    interactive:true
+  }).addTo(alertMapInstance);
+  alertMapLayers.counties.bindPopup(function(layer){
+    return '<b>'+layer.feature.properties.name+'</b><br><span style="font-size:10px;color:#a855f6">Tri-County monitored area</span>';
+  });
+  /* Per-county permanent labels placed at each polygon's centroid. Toggled
+     by the "County Labels" checkbox (borders themselves are always visible). */
+  alertMapLayers.countyLabels=[];
+  var showLabels=document.getElementById('amLayerCounties');
+  var labelsOn=!showLabels||showLabels.checked;
+  if(labelsOn){
+    try{
+      TRI_COUNTY_GEOJSON.features.forEach(function(feat){
+        var coords=feat.geometry.coordinates[0];
+        var sx=0,sy=0;
+        coords.forEach(function(c){sx+=c[0];sy+=c[1]});
+        var cx=sx/coords.length,cy=sy/coords.length;
+        var lbl=L.marker([cy,cx],{
+          icon:L.divIcon({
+            className:'county-label',
+            html:'<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:700;color:#fff;background:rgba(168,85,246,.85);padding:2px 6px;border-radius:4px;border:1px solid #c084fc;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5)">'+feat.properties.name.replace(' County','')+'</div>',
+            iconSize:[60,16],iconAnchor:[30,8]
+          }),
+          interactive:false
+        }).addTo(alertMapInstance);
+        alertMapLayers.countyLabels.push(lbl);
+      });
+    }catch(e){console.warn('County labels error:',e)}
   }
 
   /* Fetch active alerts for Michigan */
@@ -2710,41 +2810,101 @@ async function fAlertMap(){
     }
     var data=JSON.parse(txt);
     var features=data.features||[];
-    var warnCount=0,watchCount=0,advCount=0;
+    var warnCount=0,watchCount=0,advCount=0,undrawn=0;
     var showWarnings=document.getElementById('amLayerWarnings');
     var showWatches=document.getElementById('amLayerWatches');
     var showAdvisories=document.getElementById('amLayerAdvisories');
+    var focusEl=document.getElementById('amLayerFocus');
+    var focusMode=focusEl&&focusEl.checked;
 
+    /* Pre-filter: respect layer toggles, then optionally restrict to alerts
+       affecting our tri-county area (Van Buren, Allegan, Kalamazoo). */
+    var drawTasks=[];
     features.forEach(function(alert){
-      if(!alert.geometry)return;
+      if(!alert||!alert.properties)return;
       var event=alert.properties.event||'Unknown';
       var cat=alertCategory(event);
-      var color=getAlertColor(event);
       var showLayer=false;
       if(cat==='warnings'&&showWarnings&&showWarnings.checked)showLayer=true;
       if(cat==='watches'&&showWatches&&showWatches.checked)showLayer=true;
       if(cat==='advisories'&&showAdvisories&&showAdvisories.checked)showLayer=true;
       if(!showLayer)return;
+      /* Tri-County Focus filter — keep alert only if it references one of our UGC codes
+         OR has an inline geometry that intersects our area (we can't cheaply test
+         intersection, so for inline-geometry alerts we keep them as-is). */
+      if(focusMode&&!alert.geometry){
+        var ugcs=alertUgcs(alert);
+        var hit=false;
+        for(var i=0;i<ugcs.length;i++)if(FOCUS_UGCS[ugcs[i]]){hit=true;break}
+        if(!hit)return;
+      }
+      drawTasks.push({alert:alert,event:event,cat:cat});
+    });
 
-      var polygon=L.geoJSON(alert.geometry,{
-        style:{color:color,weight:3,fillColor:color,fillOpacity:0.25}
-      }).addTo(alertMapInstance);
+    /* Draw each alert. For alerts with inline geometry, draw it directly. For
+       alerts with geometry=null (e.g. Beach Hazards Statement, Winter Weather
+       Advisory, Air Quality Alert), resolve each referenced UGC zone to its
+       polygon via the NWS zones API (cached) and draw all of them. */
+    for(var ti=0;ti<drawTasks.length;ti++){
+      var t=drawTasks[ti];
+      var alert=t.alert,event=t.event,cat=t.cat;
+      var color=getAlertColor(event);
       var p=alert.properties;
       var popupHtml='<div style="font-family:Inter,sans-serif;font-size:11px;max-width:300px">'+
         '<h3 style="font-size:13px;color:'+color+';margin-bottom:6px">'+event+'</h3>'+
-        '<b>Areas:</b><br>'+p.areaDesc+'<br><br>'+
+        '<b>Areas:</b><br>'+(p.areaDesc||'Unknown')+'<br><br>'+
         '<b>Expires:</b><br>'+(p.ends||'Unknown')+'<br><br>'+
         (p.headline?'<b>'+p.headline+'</b>':'')+
         '</div>';
+
+      var geoms=[];
+      if(alert.geometry){
+        geoms.push(alert.geometry);
+      }else{
+        var ugcs=alertUgcs(alert);
+        /* Fetch all zone geometries in parallel — much faster than sequential
+           await on first load when an alert references 5+ zones. Cached results
+           return instantly so subsequent refreshes are unaffected. */
+        var results=await Promise.all(ugcs.map(function(u){return getZoneGeometry(u)}));
+        results.forEach(function(g){if(g)geoms.push(g)});
+      }
+
+      if(geoms.length===0){
+        /* No geometry resolvable — count it but skip drawing. */
+        undrawn++;
+        if(cat==='warnings')warnCount++;
+        else if(cat==='watches')watchCount++;
+        else advCount++;
+        continue;
+      }
+
+      var geomData=geoms.length===1?geoms[0]:{type:'GeometryCollection',geometries:geoms};
+      var polygon=L.geoJSON(geomData,{
+        style:{color:color,weight:3,fillColor:color,fillOpacity:0.25}
+      }).addTo(alertMapInstance);
       polygon.bindPopup(popupHtml);
       alertMapLayers[cat].push(polygon);
       if(cat==='warnings')warnCount++;
-      if(cat==='watches')watchCount++;
-      if(cat==='advisories')advCount++;
-    });
+      else if(cat==='watches')watchCount++;
+      else advCount++;
+    }
 
     var total=warnCount+watchCount+advCount;
-    if(countEl)countEl.textContent=total+' active alert'+(total!==1?'s':'')+' · '+warnCount+'W '+watchCount+'WT '+advCount+'A';
+    if(countEl){
+      var label=total+' active alert'+(total!==1?'s':'')+' · '+warnCount+'W '+watchCount+'WT '+advCount+'A';
+      if(focusMode)label+=' · Tri-County Focus';
+      if(undrawn>0)label+=' · '+undrawn+' no-map';
+      countEl.textContent=label;
+    }
+    /* Bring Tri-County borders and labels to the front so they always render
+       on top of the alert shading — keeps the monitored area instantly
+       locatable even when a warning/watch is filling the same polygon. */
+    if(alertMapLayers.counties&&typeof alertMapLayers.counties.bringToFront==='function'){
+      alertMapLayers.counties.bringToFront();
+    }
+    alertMapLayers.countyLabels.forEach(function(m){
+      if(typeof m.setZIndexOffset==='function')m.setZIndexOffset(1000);
+    });
     mkUp('amap');
   }catch(e){
     console.error('Alert map error:',e);
