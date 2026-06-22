@@ -2937,6 +2937,44 @@ function alertUgcs(alert){
    three monitored counties: Van Buren, Allegan, Kalamazoo. */
 var FOCUS_UGCS={'MIZ064':1,'MIZ071':1,'MIZ072':1,'MIC005':1,'MIC077':1,'MIC159':1};
 
+/* Map county name -> array of UGC codes that identify it.
+   Used by the county border popup to look up active alerts for the clicked
+   county. Both forecast zones (MIZ###) and county zones (MIC###) are listed
+   so alerts referencing either form are matched. */
+var COUNTY_UGCS={
+  'Allegan County':['MIZ064','MIC005'],
+  'Kalamazoo County':['MIZ072','MIC077'],
+  'Van Buren County':['MIZ071','MIC159']
+};
+
+/* Find active alerts from wwasCache that affect a specific county by name.
+   Returns an array of alert objects with event, areaDesc, ends, headline. */
+function getAlertsForCounty(countyName){
+  var ugcs=COUNTY_UGCS[countyName];
+  if(!ugcs||typeof wwasCache==='undefined'||!wwasCache)return [];
+  var matches=[];
+  wwasCache.forEach(function(alert){
+    if(!alert||!alert.properties)return;
+    var p=alert.properties;
+    var alertUgcs=[];
+    if(p.geocode&&Array.isArray(p.geocode.UGC))alertUgcs=p.geocode.UGC;
+    if(Array.isArray(p.affectedZones)){
+      p.affectedZones.forEach(function(u){
+        if(typeof u==='string'){
+          var m=u.match(/\/zones\/[^\/]+\/([A-Z]{2,3}\d{3}[A-Z]?)/);
+          if(m)alertUgcs.push(m[1]);
+        }
+      });
+    }
+    var hit=false;
+    for(var i=0;i<ugcs.length;i++){
+      if(alertUgcs.indexOf(ugcs[i])>=0){hit=true;break}
+    }
+    if(hit)matches.push(p);
+  });
+  return matches;
+}
+
 /* Toggle radar overlay layers (reflectivity and velocity) using per-station
    NWS RIDGE GIF loops as Leaflet image overlays.
    Station selector: KGRR (Grand Rapids) or KIWX (Northern Indiana).
@@ -3001,7 +3039,27 @@ async function fAlertMap(){
     interactive:true
   }).addTo(alertMapInstance);
   alertMapLayers.counties.bindPopup(function(layer){
-    return '<b>'+layer.feature.properties.name+'</b><br><span style="font-size:10px;color:#a855f6">Tri-County monitored area</span>';
+    var countyName=layer.feature.properties.name;
+    var alerts=getAlertsForCounty(countyName);
+    var html='<div style="font-family:Inter,sans-serif;font-size:11px;max-width:300px">'+
+      '<h3 style="font-size:13px;color:#a855f6;margin-bottom:4px">'+countyName+'</h3>'+
+      '<span style="font-size:9px;color:#a855f6;text-transform:uppercase;letter-spacing:.04em">Tri-County monitored area</span>';
+    if(alerts.length===0){
+      html+='<div style="margin-top:8px;padding:8px;background:rgba(52,211,153,.1);border:1px solid #34d399;border-radius:6px;font-size:10px;color:#34d399"><i class="fas fa-check-circle"></i> No active alerts</div>';
+    }else{
+      html+='<div style="margin-top:8px">';
+      alerts.forEach(function(p){
+        var color=getAlertColor(p.event||'');
+        html+='<div style="margin-bottom:8px;padding:6px 8px;background:rgba(255,255,255,.03);border-left:3px solid '+color+';border-radius:4px">'+
+          '<div style="font-size:11px;font-weight:700;color:'+color+'">'+(p.event||'Unknown')+'</div>'+
+          (p.headline?'<div style="font-size:9px;color:var(--t2);margin-top:3px;line-height:1.3">'+p.headline+'</div>':'')+
+          '<div style="font-size:9px;color:var(--t3);margin-top:3px"><b>Expires:</b> '+(p.ends||'Unknown')+'</div>'+
+          '</div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+    return html;
   });
   /* Per-county permanent labels placed at each polygon's centroid. Toggled
      by the "County Labels" checkbox (borders themselves are always visible). */
@@ -3058,22 +3116,27 @@ async function fAlertMap(){
       if(cat==='watches'&&showWatches&&showWatches.checked)showLayer=true;
       if(cat==='advisories'&&showAdvisories&&showAdvisories.checked)showLayer=true;
       if(!showLayer)return;
-      /* Tri-County Focus filter - keep alert only if it references one of our UGC codes
-         OR has an inline geometry that intersects our area (we can't cheaply test
-         intersection, so for inline-geometry alerts we keep them as-is). */
-      if(focusMode&&!alert.geometry){
+      /* Tri-County Focus filter - when enabled, only keep alerts that reference
+         at least one of our UGC codes. For alerts with inline geometry that
+         cover multiple counties (e.g. a Beach Hazards Statement polygon
+         spanning Oceana+Muskegon+Ottawa+Allegan+Van Buren), we mark them
+         useZonesOnly=true so the drawing logic resolves zone geometries for
+         ONLY our matching counties instead of drawing the full inline polygon. */
+      var focusHitUgcs=null;
+      if(focusMode){
         var ugcs=alertUgcs(alert);
-        var hit=false;
-        for(var i=0;i<ugcs.length;i++)if(FOCUS_UGCS[ugcs[i]]){hit=true;break}
-        if(!hit)return;
+        focusHitUgcs=ugcs.filter(function(u){return FOCUS_UGCS[u]});
+        if(focusHitUgcs.length===0)return;  /* alert doesn't touch our area */
       }
-      drawTasks.push({alert:alert,event:event,cat:cat});
+      drawTasks.push({alert:alert,event:event,cat:cat,focusUgcs:focusHitUgcs});
     });
 
-    /* Draw each alert. For alerts with inline geometry, draw it directly. For
-       alerts with geometry=null (e.g. Beach Hazards Statement, Winter Weather
-       Advisory, Air Quality Alert), resolve each referenced UGC zone to its
-       polygon via the NWS zones API (cached) and draw all of them. */
+    /* Draw each alert. For alerts with inline geometry, normally draw it
+       directly. But if Tri-County Focus is on AND the alert has inline geometry
+       that covers multiple counties, use the zone geometries for ONLY our
+       matching counties instead (so areas outside our tri-county area don't
+       get shaded). For alerts with geometry=null, resolve each referenced UGC
+       zone to its polygon via the NWS zones API (cached) and draw all of them. */
     for(var ti=0;ti<drawTasks.length;ti++){
       var t=drawTasks[ti];
       var alert=t.alert,event=t.event,cat=t.cat;
@@ -3087,15 +3150,18 @@ async function fAlertMap(){
         '</div>';
 
       var geoms=[];
-      if(alert.geometry){
+      /* In focus mode, always use zone-based drawing for our matching counties
+         only - this clips the alert to our tri-county area even when the alert
+         has an inline polygon that covers a wider region. */
+      if(focusMode&&t.focusUgcs&&t.focusUgcs.length>0){
+        var results=await Promise.all(t.focusUgcs.map(function(u){return getZoneGeometry(u)}));
+        results.forEach(function(g){if(g)geoms.push(g)});
+      }else if(alert.geometry){
         geoms.push(alert.geometry);
       }else{
         var ugcs=alertUgcs(alert);
-        /* Fetch all zone geometries in parallel - much faster than sequential
-           await on first load when an alert references 5+ zones. Cached results
-           return instantly so subsequent refreshes are unaffected. */
-        var results=await Promise.all(ugcs.map(function(u){return getZoneGeometry(u)}));
-        results.forEach(function(g){if(g)geoms.push(g)});
+        var results2=await Promise.all(ugcs.map(function(u){return getZoneGeometry(u)}));
+        results2.forEach(function(g){if(g)geoms.push(g)});
       }
 
       if(geoms.length===0){
