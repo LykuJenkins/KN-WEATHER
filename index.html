@@ -31,6 +31,43 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 @keyframes bd{to{transform:translate(-2%,-1.5%) rotate(2deg)}}
 .app{position:relative;z-index:1;max-width:1460px;margin:0 auto;padding:14px}
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);margin-bottom:14px;backdrop-filter:blur(20px);flex-wrap:wrap;gap:10px;position:relative;z-index:10}
+
+/* Top-level category tab bar - 4 tabs (Current Conditions, NWS, SPC, Storm Spotting) */
+.tab-bar{display:flex;gap:4px;padding:6px;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);margin-bottom:14px;backdrop-filter:blur(20px);position:sticky;top:8px;z-index:50;overflow-x:auto;scrollbar-width:none}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab-btn{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 6px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--t2);font-size:11px;font-weight:600;letter-spacing:.02em;cursor:pointer;transition:.2s;white-space:nowrap;position:relative}
+.tab-btn i{font-size:16px;color:var(--t3);transition:.2s}
+.tab-btn:hover{background:var(--acc-g);color:var(--t1)}
+.tab-btn:hover i{color:var(--acc)}
+.tab-btn.on{background:linear-gradient(135deg,var(--acc),#7c3aed);color:#fff;border-color:var(--acc);box-shadow:0 0 16px var(--acc-g)}
+.tab-btn.on i{color:#fff}
+/* Alert dot on the Current Conditions tab - shows when there's an active alert */
+.tab-btn .tab-alert-dot{position:absolute;top:4px;right:6px;width:8px;height:8px;border-radius:50%;background:#fb7185;box-shadow:0 0 6px #fb7185;display:none}
+.tab-btn.has-alert .tab-alert-dot{display:block;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media(max-width:480px){
+  .tab-btn{font-size:9px;padding:8px 4px}
+  .tab-btn i{font-size:14px}
+}
+
+/* Tab pane - only the active tab's pane is shown */
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* Floating alert notification banner - shows when a new alert arrives while
+   the user is on a non-Current-Conditions tab. Stacks up to 3, auto-dismisses
+   after 30s. Tapping switches to Current Conditions tab. */
+.alert-notif-stack{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:min(560px,calc(100vw - 24px))}
+.alert-notif{background:var(--card);border:2px solid var(--dng);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;pointer-events:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideDown .3s ease-out;font-family:Inter,sans-serif}
+@keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+.alert-notif:hover{background:var(--bg2)}
+.alert-notif-icon{width:32px;height:32px;border-radius:50%;background:var(--dng);display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:pulse 1.5s infinite}
+.alert-notif-icon i{color:#fff;font-size:14px}
+.alert-notif-body{flex:1;min-width:0}
+.alert-notif-title{font-size:12px;font-weight:700;color:var(--dng);line-height:1.2}
+.alert-notif-sub{font-size:10px;color:var(--t3);margin-top:2px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alert-notif-close{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
+.alert-notif-close:hover{background:var(--bg2);color:var(--t1)}
 .hdr-l{display:flex;align-items:center;gap:12px}
 .logo{width:44px;height:44px;border-radius:50%;overflow:hidden;border:2px solid var(--acc);box-shadow:0 0 18px var(--acc-g);flex-shrink:0;position:relative;background:linear-gradient(135deg,var(--acc),#6d28d9)}
 .logo img{width:100%;height:100%;object-fit:cover;display:block}
@@ -570,7 +607,38 @@ body.capturing .wwas-item-actions{display:none!important}
 <!-- Location tabs are generated from LOCATIONS by buildLocTabs() -->
 <div class="loc-tabs" id="locTabs"></div>
 
-<!-- Main grid of panels; panels are generated from PANELS registry by buildPanels() -->
+<!-- Top-level category tab bar - switches between panel groups -->
+<div class="tab-bar" id="tabBar">
+  <button class="tab-btn on" data-tab="current" onclick="switchTab('current')">
+    <i class="fas fa-house"></i>
+    <span>Current Conditions</span>
+    <span class="tab-alert-dot"></span>
+  </button>
+  <button class="tab-btn" data-tab="nws" onclick="switchTab('nws')">
+    <i class="fas fa-cloud-sun"></i>
+    <span>NWS</span>
+    <span class="tab-alert-dot"></span>
+  </button>
+  <button class="tab-btn" data-tab="spc" onclick="switchTab('spc')">
+    <i class="fas fa-shield-halved"></i>
+    <span>SPC</span>
+    <span class="tab-alert-dot"></span>
+  </button>
+  <button class="tab-btn" data-tab="spotting" onclick="switchTab('spotting')">
+    <i class="fas fa-tower-observation"></i>
+    <span>Storm Spotting</span>
+    <span class="tab-alert-dot"></span>
+  </button>
+</div>
+
+<!-- Floating alert notification stack - shown when a new alert arrives while
+     the user is on a non-Current-Conditions tab. Populated by
+     showAlertNotification() in response to fWWASummary() detecting new alerts. -->
+<div class="alert-notif-stack" id="alertNotifStack"></div>
+
+<!-- Main grid of panels; panels are generated from PANELS registry by buildPanels().
+     Each tab's panels are wrapped in a <div class="tab-pane"> - only the active
+     tab's pane is shown (CSS .tab-pane.active). -->
 <div class="grid" id="mainGrid"></div>
 
 <footer class="ft">
@@ -773,77 +841,77 @@ var PANELS=[
   {
     id:'current',title:'Current',icon:'fa-temperature-half',
     badge:'Live',badgeClass:'cb-l',gridClass:'g1',extraClass:'cu',
-    updateId:'upd-cur',refreshFn:'fWx',collapsible:true,
+    updateId:'upd-cur',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="hero"><div class="ci" id="cIco"><i class="fas fa-cloud-sun"></i></div><div class="tmp" id="cTmp">--&deg;F</div><div class="fl" id="cFl">Feels like --&deg;F</div><div class="cd" id="cCd">Loading...</div><div class="nws-line" id="nwsLine" style="display:none"><strong>NWS:</strong> <span id="nwsTxt"></span></div></div><div class="dg"><div class="di"><div class="dl">Humidity</div><div class="dv" id="dHu">--<span class="du">%</span></div></div><div class="di"><div class="dl">Dew Point</div><div class="dv" id="dDw">--<span class="du">&deg;F</span></div></div><div class="di"><div class="dl">Wind</div><div class="dv" id="dWi">--<span class="du">mph</span></div></div><div class="di"><div class="dl">Pressure</div><div class="dv" id="dPr">--<span class="du">inHg</span></div></div></div>'
   },
   /* 2. Hourly Forecast */
   {
     id:'hourly',title:'Hourly Forecast',icon:'fa-chart-line',
     badge:'Updating',badgeClass:'cb-u',gridClass:'g2',
-    updateId:'upd-hr',refreshFn:'fWx',collapsible:true,
+    updateId:'upd-hr',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="cc"><canvas id="hCh"></canvas></div>'
   },
   /* 3. 7-Day */
   {
     id:'7day',title:'7-Day',icon:'fa-calendar-week',
     badge:null,badgeClass:null,gridClass:'g1',
-    updateId:'upd-fc',refreshFn:'fWx',collapsible:true,
+    updateId:'upd-fc',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="fl2" id="fcL"></div>'
   },
   /* 4. Threats (moved here from slot 7 so it sits with the top at-a-glance panels) */
   {
     id:'threats',title:'Threats',icon:'fa-gauge-high',
     badge:null,badgeClass:null,gridClass:'g2',
-    updateId:'upd-thr',refreshFn:'fWx',collapsible:true,
+    updateId:'upd-thr',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="tl" id="thL"></div>'
   },
   /* 4a. WWA Map (Warnings, Watches, Advisories) */
   {
     id:'wwa',title:'WWA Map',icon:'fa-triangle-exclamation',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-wwa',refreshFn:'rWWA',collapsible:true,
+    updateId:'upd-wwa',refreshFn:'rWWA',collapsible:true,tab:'current',
     body:'<div class="img-stage"><img id="wwaImg" src="'+CONFIG.wwaMapUrl+'" alt="Warnings, Watches, and Advisories Map" loading="lazy"><div class="img-cap">NWS '+CONFIG.nwsOffice+' - Warnings, Watches &amp; Advisories</div></div>'
   },
   /* 4b. WWA Map Color Code (legend for the WWA Map above) */
   {
     id:'wwaLegend',title:'WWA Map Color Code',icon:'fa-palette',
     badge:'Legend',badgeClass:'cb-l',gridClass:'gf',
-    updateId:null,refreshFn:null,collapsible:true,defaultCollapsed:true,
+    updateId:null,refreshFn:null,collapsible:true,defaultCollapsed:true,tab:'current',
     body:'<div id="wwaLegendGrid"></div>'
   },
   /* 4c. Alert Polygon Map (Leaflet + NWS alerts) */
   {
     id:'alertMap',title:'Alert Polygon Map',icon:'fa-map-location-dot',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-amap',refreshFn:'fAlertMap',collapsible:true,
+    updateId:'upd-amap',refreshFn:'fAlertMap',collapsible:true,tab:'current',
     body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR - Grand Rapids</option><option value="KIWX">KIWX - Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
   },
   /* 4d. WWA Summary (text-based active alerts with category filters) */
   {
     id:'wwaSummary',title:'WWA Summary',icon:'fa-list-check',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-wwas',refreshFn:'fWWASummary',collapsible:true,
+    updateId:'upd-wwas',refreshFn:'fWWASummary',collapsible:true,tab:'current',
     body:'<div class="wwas-alert-player" id="wwasAlertPlayer" style="display:none"><div class="wwas-player-bar"><i class="fas fa-bell" style="color:var(--dng);animation:pu 1s infinite"></i><span style="font-size:10px;font-weight:600;color:var(--dng)">New Alert!</span><audio id="wwasAlertAudio" loop style="height:28px"></audio><button class="wwas-player-stop" onclick="stopWwasAlert()"><i class="fas fa-stop"></i> Stop</button></div></div><div class="wwas-filters" id="wwasFilters"></div><div class="wwas-mute-bar"><label class="wwas-mute-label"><input type="checkbox" id="wwasMuteSound" onchange="toggleWwasMute(this.checked)"> <i class="fas fa-volume-xmark"></i> Mute Alert Sound</label></div><div class="wwas-content" id="wwasContent"><div class="lt"><i class="fas fa-spinner"></i> Loading WWA summary...</div></div>'
   },
   /* 5. KGRR Radar & Loops */
   {
     id:'kgrr',title:'KGRR Radar & Loops',icon:'fa-satellite-dish',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-kgrr',refreshFn:'rRadar',collapsible:true,
+    updateId:'upd-kgrr',refreshFn:'rRadar',collapsible:true,tab:'nws',
     body:'<div class="st" id="radarTabs"></div><div class="radar-stage" id="radarStage"><div class="radar-empty">Loading radar...</div></div>'
   },
   /* 6. Hourly Forecast Graph (per-location meteogram) */
   {
     id:'meteo',title:'Hourly Forecast Graph',icon:'fa-chart-line',
     badge:'NWS '+CONFIG.nwsOffice,badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-meteo',refreshFn:'rMeteo',collapsible:true,
+    updateId:'upd-meteo',refreshFn:'rMeteo',collapsible:true,tab:'nws',
     body:'<div class="meteo-wrap"><div class="meteo-point" id="meteoPt">Loading point forecast...</div><div class="img-stage"><img id="meteoImg" src="" alt="48-hour Hourly Forecast Graph (meteogram)" loading="lazy" onerror="this.style.opacity=.3;var c=document.getElementById(\'meteoCap\');if(c){c.style.display=\'block\';c.textContent=\'Meteogram image temporarily unavailable\'}"><div class="img-cap" id="meteoCap">Loading meteogram...</div></div></div>'
   },
   /* 7. Forecast Discussion (AFD) */
   {
     id:'afd',title:'Forecast Discussion',icon:'fa-pen-fancy',
     badge:null,badgeClass:null,gridClass:'gf',
-    updateId:'upd-afd',refreshFn:'fAFD',collapsible:true,
+    updateId:'upd-afd',refreshFn:'fAFD',collapsible:true,tab:'nws',
     actions:[{type:'copy',target:'afdC',label:'Copy Discussion',icon:'fa-copy'}],
     shotWidth:800,  /* text-heavy panel: capture at 800px so the AFD text fills the width without huge blank space at right */
     body:'<div class="dc" id="afdC"><div class="lt"><i class="fas fa-spinner"></i>Loading...</div></div>'
@@ -852,14 +920,14 @@ var PANELS=[
   {
     id:'nwsRss',title:'NWS '+CONFIG.nwsOffice+' Feed',icon:'fa-broadcast-tower',
     badge:'Updating',badgeClass:'cb-u',gridClass:'gf',
-    updateId:'upd-nws',refreshFn:'fRSS',collapsible:true,
+    updateId:'upd-nws',refreshFn:'fRSS',collapsible:true,tab:'nws',
     body:'<div class="rss-list" id="rssL"><div class="lt"><i class="fas fa-spinner"></i>Loading NWS feed...</div></div>'
   },
   /* 9b. NWS National Feed (RSS) */
   {
     id:'nwsNational',title:'NWS National Feed',icon:'fa-newspaper',
     badge:'Updating',badgeClass:'cb-u',gridClass:'gf',
-    updateId:'upd-nwsnat',refreshFn:'fNWSNational',collapsible:true,
+    updateId:'upd-nwsnat',refreshFn:'fNWSNational',collapsible:true,tab:'nws',
     body:'<div class="rss-list" id="rssNatL"><div class="lt"><i class="fas fa-spinner"></i>Loading national feed...</div></div>'
   },
   /* 9c. NWS Gridpoint Forecast (raw NDFD data per location) */
@@ -867,14 +935,14 @@ var PANELS=[
     id:'gridpoint',title:'NWS Gridpoint Forecast',icon:'fa-table-cells',
     badge:'NDFD',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-gp',refreshFn:'fGridpoint',collapsible:true,
-    dynamicTitle:true,
+    dynamicTitle:true,tab:'nws',
     body:'<div id="gpContent"><div class="lt"><i class="fas fa-spinner"></i> Loading gridpoint data...</div></div>'
   },
   /* 9d. GRR Office Headlines */
   {
     id:'headlines',title:'GRR Office Headlines',icon:'fa-bullhorn',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-hdl',refreshFn:'fHeadlines',collapsible:true,
+    updateId:'upd-hdl',refreshFn:'fHeadlines',collapsible:true,tab:'nws',
     body:'<div id="hdlContent"><div class="lt"><i class="fas fa-spinner"></i> Loading headlines...</div></div>'
   },
   /* 10. Observations & Forecast Text (title updates with selected area name) */
@@ -883,6 +951,7 @@ var PANELS=[
     badge:'Updating',badgeClass:'cb-u',gridClass:'gf',
     updateId:'upd-dw',refreshFn:'fDWML',collapsible:true,
     dynamicTitle:true,  /* title prefix is the current location label */
+    tab:'nws',
     actions:[{type:'copy',target:'fcText',label:'Copy Forecast Text',icon:'fa-copy'}],
     shotWidth:900,  /* text-heavy panel: capture at 900px to avoid blank space at right */
     body:'<div class="dwml-block"><div class="dwml-label"><i class="fas fa-satellite-dish"></i>Current Observations</div><div class="obs-grid" id="obsGrid"><div class="lt"><i class="fas fa-spinner"></i> Loading observations...</div></div></div><div class="dwml-block"><div class="dwml-label"><i class="fas fa-file-lines"></i>Forecast Text</div><div class="dwml-text" id="fcText"><div class="lt"><i class="fas fa-spinner"></i> Loading forecast...</div></div></div>'
@@ -891,56 +960,56 @@ var PANELS=[
   {
     id:'localobs',title:'Tri-County Surface Obs Network',icon:'fa-tower-broadcast',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-lobs',refreshFn:'fLocalObs',collapsible:true,
+    updateId:'upd-lobs',refreshFn:'fLocalObs',collapsible:true,tab:'nws',
     body:'<div id="lobsGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"><div class="lt"><i class="fas fa-spinner"></i>Loading surface obs...</div></div>'
   },
   /* 12. Precipitation & Temperature Outlook (DWML) */
   {
     id:'ptout',title:'Precipitation & Temperature Outlook',icon:'fa-droplet',
     badge:null,badgeClass:null,gridClass:'gf',
-    updateId:'upd-pt',refreshFn:'fDWML',collapsible:true,
+    updateId:'upd-pt',refreshFn:'fDWML',collapsible:true,tab:'nws',
     body:'<div class="dwml-block"><div class="dwml-label"><i class="fas fa-cloud-rain"></i>12-Hourly Probability of Precipitation</div><div class="pop-grid" id="popGrid"><div class="lt"><i class="fas fa-spinner"></i> Loading...</div></div></div><div class="dwml-block"><div class="dwml-label"><i class="fas fa-temperature-half"></i>Daily Minimum / Maximum Temperature</div><div class="mnx-grid" id="mnxGrid"><div class="lt"><i class="fas fa-spinner"></i> Loading...</div></div></div>'
   },
   /* 13. SPC Severe Weather Outlooks */
   {
     id:'spc',title:'SPC Severe Weather Outlooks',icon:'fa-shield-halved',
     badge:CONFIG.nwsOffice+' Sector',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-spc',refreshFn:'rSPCImgs',collapsible:true,
+    updateId:'upd-spc',refreshFn:'rSPCImgs',collapsible:true,tab:'spc',
     body:'<div class="st" id="spcDayTabs"></div><div class="spc-grid" id="spcGrid"></div>'
   },
   /* 14. Observations Map */
   {
     id:'hazards',title:'Observations Map',icon:'fa-triangle-exclamation',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-obs',refreshFn:'rHazards',collapsible:true,
+    updateId:'upd-obs',refreshFn:'rHazards',collapsible:true,tab:'spc',
     body:'<div class="map-stage"><iframe src="'+CONFIG.grrHazardsUrl+'" loading="lazy" title="GRR Hazards and Observations Map"></iframe></div>'
   },
   /* 15. SPC Feed (RSS) */
   {
     id:'spcRss',title:'SPC Feed',icon:'fa-satellite-dish',
     badge:'Updating',badgeClass:'cb-u',gridClass:'gf',
-    updateId:'upd-spcr',refreshFn:'fSPCRss',collapsible:true,
+    updateId:'upd-spcr',refreshFn:'fSPCRss',collapsible:true,tab:'spc',
     body:'<div class="img-stage" style="margin-bottom:10px"><img src="https://www.spc.noaa.gov/products/watch/validww.png" alt="SPC Valid Watches Map" loading="lazy" style="width:100%;height:auto;display:block" id="spcValidWwImg"><div class="img-cap">SPC - Valid Watches Map (auto-refreshes with cache-busting)</div></div><div class="st" id="spcRssTabs"></div><div class="spc-rss-list" id="spcRL"><div class="lt"><i class="fas fa-spinner"></i>Loading SPC feeds...</div></div>'
   },
   /* 16. Aviation */
   {
     id:'aviation',title:'Aviation',icon:'fa-plane',
     badge:null,badgeClass:null,gridClass:'gf',
-    updateId:'upd-av',refreshFn:'fAllAv',collapsible:true,
+    updateId:'upd-av',refreshFn:'fAllAv',collapsible:true,tab:'spotting',
     body:'<div class="st" id="avTabs"></div><div class="av-body"><div><div class="cc" style="height:190px"><canvas id="mCh"></canvas></div><div class="decoded-grid" id="decG" style="display:none"></div><div class="av-rm" id="rmTx"><div class="lt"><i class="fas fa-spinner"></i>Loading METAR...</div></div><div class="raw-toggle" id="rawTog" style="display:none" onclick="document.getElementById(\'rawBox\').classList.toggle(\'raw-hid\')">Toggle Raw</div><div class="av-rm raw-hid" id="rawBox"></div></div><div style="display:flex;flex-direction:column"><div class="ta-v" id="taV"></div><div class="ta-tl" id="taTl"><div class="lt"><i class="fas fa-spinner"></i>Loading TAF...</div></div></div></div>'
   },
   /* 17. Surface Front Analysis (WPC) */
   {
     id:'sfc',title:'Surface Front Analysis',icon:'fa-map',
     badge:'WPC',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-sfc',refreshFn:'rSfcMap',collapsible:true,
+    updateId:'upd-sfc',refreshFn:'rSfcMap',collapsible:true,tab:'spotting',
     body:'<div class="img-stage"><img id="sfcImg" src="'+CONFIG.surfaceFrontUrl+'" alt="Surface Front Analysis" loading="lazy"><div class="img-cap">NOAA WPC - U.S. Surface Fronts &amp; Pressure (09Z)</div></div>'
   },
   /* 18. Forecasted SkewT Model Soundings (NCEP GFS/NAM) - tabbed by model */
   {
     id:'skewt',title:'Forecasted SkewT Model Soundings',icon:'fa-chart-area',
     badge:'NCEP',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-snd',refreshFn:'rSkewT',collapsible:true,
+    updateId:'upd-snd',refreshFn:'rSkewT',collapsible:true,tab:'spotting',
     body:'<div class="st" id="sndModelTabs"></div>'+
       '<div class="st" id="sndStationTabs" style="margin-top:4px"></div>'+
       '<div class="snd-controls">'+
@@ -972,28 +1041,28 @@ var PANELS=[
   {
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,
+    updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
     body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
     id:'lightning',title:'Lightning Tracker',icon:'fa-bolt',
     badge:'Blitzortung',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-lt',refreshFn:'rLightning',collapsible:true,
+    updateId:'upd-lt',refreshFn:'rLightning',collapsible:true,tab:'spotting',
     body:'<div class="map-stage"><iframe id="lightningFrame" src="'+CONFIG.lightningMapUrl+'" loading="lazy" title="Blitzortung Lightning Map"></iframe></div>'
   },
   /* 19b. Local Storm Reports (LSR) - above Road Weather Cameras */
   {
     id:'lsr',title:'Local Storm Reports',icon:'fa-clipboard-list',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-lsr',refreshFn:'fLSR',collapsible:true,
+    updateId:'upd-lsr',refreshFn:'fLSR',collapsible:true,tab:'spotting',
     body:'<div id="lsrContent"><div class="lt"><i class="fas fa-spinner"></i> Loading storm reports...</div></div>'
   },
   /* 20. Road Weather Cameras (MiDrive) */
   {
     id:'roadcams',title:'Road Weather Cameras',icon:'fa-video',
     badge:'MiDrive',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,
+    updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'spotting',
     body:'<div id="rcGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>'
   },
   /* 21. Facebook (responsive, always last) */
@@ -1096,44 +1165,106 @@ function buildLocTabs(){
 }
 
 /* ── Build panels from PANELS registry ─────────────────────────────────────── */
+/* Panels are grouped by their `tab` property (current/nws/spc/spotting) into
+   separate <div class="tab-pane"> containers. Only the active tab's pane is
+   shown (CSS .tab-pane.active). The Facebook panel has no tab and is rendered
+   in its own always-visible pane at the bottom as a footer. */
+var TABS=['current','nws','spc','spotting'];
+var activeTab='current';   /* updated by switchTab(); read by refreshAll() */
+var TAB_STORAGE_KEY='kn_weather_active_tab';
+
 function buildPanels(){
   var grid=document.getElementById('mainGrid');
-  grid.innerHTML=PANELS.map(function(p){
-    if(p.id==='fb'){
-      /* Facebook panel has no header - just the body. Give it an id so it can
-         be tracked for panel reordering (always stays last). */
-      return '<div class="c '+p.gridClass+(p.extraClass?' '+p.extraClass:'')+'" id="panel-fb">'+p.body+'</div>';
-    }
-    var cls=['c',p.gridClass];
-    if(p.extraClass)cls.push(p.extraClass);
-    if(p.collapsible)cls.push('collapsible');
-    /* Action buttons - always add a screenshot button, plus any panel-specific actions */
-    var actions=(p.actions||[]).slice();
-    /* Auto-add screenshot button to all panels except FB */
-    actions.push({type:'screenshot',label:'Export Screenshot',icon:'fa-camera'});
-    var actionsHtml='<div class="ch-actions">'+actions.map(function(a){
-      return '<button class="act-btn" data-act="'+a.type+'" data-target="'+(a.target||'')+'" data-panel="'+p.id+'" title="'+a.label+'" aria-label="'+a.label+'"><i class="fas '+a.icon+'"></i></button>';
-    }).join('')+'</div>';
-    /* Header */
-    var badgeHtml=(p.badge&&p.badgeClass)?'<span class="cb '+p.badgeClass+'" id="'+p.id+'Bdg">'+p.badge+'</span>':'';
-    var updHtml=p.updateId?'<span class="ut" id="upd-'+p.id+'">--:--</span>':'';
-    var titleCls='ct'+(p.collapsible?' collapse-toggle':'');
-    var chevron=p.collapsible?'<i class="fas fa-chevron-down collapse-icon"></i>':'';
-    /* For dynamicTitle panels, wrap the title text in a span with an id so we can update it */
-    var titleId=p.dynamicTitle?('id="title-'+p.id+'"'):'';
-    var titleText='<span '+titleId+'>'+p.title+'</span>';
-    /* Position selector (up/down arrows + number) - hidden by default, shown in Move Panels mode */
-    var posHtml='<div class="panel-pos-wrap" id="posWrap-'+p.id+'">'+
-      '<button class="pos-arrow pos-up" onclick="movePanelUp(\''+p.id+'\')" title="Move panel up"><i class="fas fa-chevron-up"></i></button>'+
-      '<span class="pos-num" id="posNum-'+p.id+'">-</span>'+
-      '<button class="pos-arrow pos-down" onclick="movePanelDown(\''+p.id+'\')" title="Move panel down"><i class="fas fa-chevron-down"></i></button>'+
-      '</div>';
-    var header='<div class="ch"><div class="ch-left"><div class="'+titleCls+'" '+(p.collapsible?'title="Click to collapse / expand"':'')+'>'+chevron+'<i class="fas '+p.icon+'"></i>'+titleText+'</div>'+badgeHtml+'</div><div class="ch-right">'+posHtml+actionsHtml+updHtml+'</div></div>';
-    var body=p.collapsible?'<div class="collapse-body">'+p.body+'</div>':p.body;
-    return '<div class="'+cls.join(' ')+'" id="panel-'+p.id+'">'+header+body+'</div>';
-  }).join('');
+  /* Build a pane for each tab containing that tab's panels */
+  var html='';
+  TABS.forEach(function(tabId){
+    var panelsHtml=PANELS.filter(function(p){return p.tab===tabId}).map(buildPanelHtml).join('');
+    html+='<div class="tab-pane'+(tabId===activeTab?' active':'')+'" id="tabpane-'+tabId+'">'+panelsHtml+'</div>';
+  });
+  /* Facebook panel - always-visible footer pane (no tab) */
+  var fbPanel=PANELS.find(function(p){return p.id==='fb'});
+  if(fbPanel){
+    html+='<div class="tab-pane active" id="tabpane-fb">'+buildPanelHtml(fbPanel)+'</div>';
+  }
+  grid.innerHTML=html;
   /* Wire up action buttons */
   bindPanelActions();
+}
+
+/* Build the HTML for a single panel. Extracted from the old buildPanels() so
+   it can be called per-panel. */
+function buildPanelHtml(p){
+  if(p.id==='fb'){
+    /* Facebook panel has no header - just the body */
+    return '<div class="c '+p.gridClass+(p.extraClass?' '+p.extraClass:'')+'" id="panel-fb">'+p.body+'</div>';
+  }
+  var cls=['c',p.gridClass];
+  if(p.extraClass)cls.push(p.extraClass);
+  if(p.collapsible)cls.push('collapsible');
+  /* Action buttons - always add a screenshot button, plus any panel-specific actions */
+  var actions=(p.actions||[]).slice();
+  actions.push({type:'screenshot',label:'Export Screenshot',icon:'fa-camera'});
+  var actionsHtml='<div class="ch-actions">'+actions.map(function(a){
+    return '<button class="act-btn" data-act="'+a.type+'" data-target="'+(a.target||'')+'" data-panel="'+p.id+'" title="'+a.label+'" aria-label="'+a.label+'"><i class="fas '+a.icon+'"></i></button>';
+  }).join('')+'</div>';
+  /* Header */
+  var badgeHtml=(p.badge&&p.badgeClass)?'<span class="cb '+p.badgeClass+'" id="'+p.id+'Bdg">'+p.badge+'</span>':'';
+  var updHtml=p.updateId?'<span class="ut" id="upd-'+p.id+'">--:--</span>':'';
+  var titleCls='ct'+(p.collapsible?' collapse-toggle':'');
+  var chevron=p.collapsible?'<i class="fas fa-chevron-down collapse-icon"></i>':'';
+  var titleId=p.dynamicTitle?('id="title-'+p.id+'"'):'';
+  var titleText='<span '+titleId+'>'+p.title+'</span>';
+  var posHtml='<div class="panel-pos-wrap" id="posWrap-'+p.id+'">'+
+    '<button class="pos-arrow pos-up" onclick="movePanelUp(\''+p.id+'\')" title="Move panel up"><i class="fas fa-chevron-up"></i></button>'+
+    '<span class="pos-num" id="posNum-'+p.id+'">-</span>'+
+    '<button class="pos-arrow pos-down" onclick="movePanelDown(\''+p.id+'\')" title="Move panel down"><i class="fas fa-chevron-down"></i></button>'+
+    '</div>';
+  var header='<div class="ch"><div class="ch-left"><div class="'+titleCls+'" '+(p.collapsible?'title="Click to collapse / expand"':'')+'>'+chevron+'<i class="fas '+p.icon+'"></i>'+titleText+'</div>'+badgeHtml+'</div><div class="ch-right">'+posHtml+actionsHtml+updHtml+'</div></div>';
+  var body=p.collapsible?'<div class="collapse-body">'+p.body+'</div>':p.body;
+  return '<div class="'+cls.join(' ')+'" id="panel-'+p.id+'">'+header+body+'</div>';
+}
+
+/* ── Tab switching ─────────────────────────────────────────────────────────── */
+/* switchTab(tabId): shows the requested tab's pane, hides the others, saves
+   the active tab to localStorage, and calls alertMapInstance.invalidateSize()
+   if switching TO the current tab (Leaflet needs this after being hidden to
+   recompute its tile layout). */
+function switchTab(tabId){
+  if(TABS.indexOf(tabId)===-1)return;
+  activeTab=tabId;
+  /* Update tab button states */
+  document.querySelectorAll('.tab-btn').forEach(function(btn){
+    btn.classList.toggle('on',btn.dataset.tab===tabId);
+  });
+  /* Show/hide tab panes - Facebook pane (tabpane-fb) is always active */
+  document.querySelectorAll('.tab-pane').forEach(function(pane){
+    if(pane.id==='tabpane-fb')return;  /* footer is always visible */
+    pane.classList.toggle('active',pane.id==='tabpane-'+tabId);
+  });
+  /* Save to localStorage so refresh restores the same tab */
+  try{localStorage.setItem(TAB_STORAGE_KEY,tabId)}catch(e){}
+  /* If switching to Current Conditions tab, force Leaflet to recompute size
+     (it gets confused when its container was display:none) */
+  if(tabId==='current'&&typeof alertMapInstance!=='undefined'&&alertMapInstance){
+    setTimeout(function(){alertMapInstance.invalidateSize()},100);
+    /* Also dismiss any floating alert notifications since the user is now
+       looking at the Current Conditions tab where alerts are visible directly. */
+    dismissAllAlertNotifications();
+  }
+}
+
+/* On page load, restore the saved active tab from localStorage (default: current) */
+function loadSavedTab(){
+  try{
+    var saved=localStorage.getItem(TAB_STORAGE_KEY);
+    if(saved&&TABS.indexOf(saved)!==-1){
+      activeTab=saved;
+    }
+  }catch(e){}
+  /* Sync the tab buttons to the active tab */
+  document.querySelectorAll('.tab-btn').forEach(function(btn){
+    btn.classList.toggle('on',btn.dataset.tab===activeTab);
+  });
 }
 
 /* ── Build SPC day tabs from SPC_DAYS ──────────────────────────────────────── */
@@ -3055,6 +3186,7 @@ async function fWWASummary(){
        Only play the sound if the alert was issued within the last 5 minutes
        (so it doesn't play every time the page loads or refreshes). */
     var hasNewAlerts=false;
+    var newAlerts=[];   /* collect details for the floating notification */
     var fiveMinAgo=now-5*60*1000;
     var currentIds={};
     features.forEach(function(f){
@@ -3065,7 +3197,14 @@ async function fWWASummary(){
         var issued=f.properties.sent||f.properties.effective||f.properties.onset;
         if(issued){
           var issuedMs=new Date(issued).getTime();
-          if(issuedMs>=fiveMinAgo){hasNewAlerts=true}
+          if(issuedMs>=fiveMinAgo){
+            hasNewAlerts=true;
+            newAlerts.push({
+              event:f.properties.event||'Weather Alert',
+              areaDesc:f.properties.areaDesc||'',
+              id:id
+            });
+          }
         }
       }
     });
@@ -3076,7 +3215,17 @@ async function fWWASummary(){
     if(hasNewAlerts&&!isMuted&&Object.keys(wwasPrevIds).length>0){
       playWwasAlertSound();
     }
+    /* Show floating notification for each new alert if the user is NOT on the
+       Current Conditions tab (so they get notified even when viewing NWS/SPC/
+       Storm Spotting). Tapping the notification switches to Current Conditions. */
+    if(hasNewAlerts&&Object.keys(wwasPrevIds).length>0){
+      newAlerts.forEach(function(a){showAlertNotification(a.event,a.areaDesc,a.id)});
+      /* Update the alert dot on the Current Conditions tab */
+      updateTabAlertDot();
+    }
     renderWwasContent();
+    /* Always sync the alert dot - clears it when alerts expire */
+    updateTabAlertDot();
     mkUp('wwas');
   }catch(e){
     console.error('WWA summary error:',e);
@@ -3096,6 +3245,94 @@ function playWwasAlertSound(){
   player.style.display='block';
   var pr=audio.play();
   if(pr)pr.then(function(){}).catch(function(e){console.warn('Alert sound autoplay blocked:',e)});
+}
+
+/* ── Floating alert notification banner ────────────────────────────────────── */
+/* showAlertNotification(event, areaDesc, id): shows a floating banner at the
+   top of the viewport when a new alert arrives AND the user is not on the
+   Current Conditions tab. Stacks up to 3 visible at once; older ones beyond
+   3 are dropped. Each banner auto-dismisses after 30 seconds. Tapping a
+   banner switches to Current Conditions and dismisses all banners. */
+var ALERT_NOTIF_TIMEOUTS={};   /* id -> timeout handle, for auto-dismiss */
+var ALERT_NOTIF_MAX=3;          /* max simultaneous banners */
+
+function showAlertNotification(event,areaDesc,id){
+  /* Only show notifications when the user is NOT on the Current Conditions tab.
+     On Current Conditions, the user already sees the WWA Summary panel + alert
+     polygon map updating in real-time, so a banner would be redundant. */
+  if(activeTab==='current')return;
+  /* Dedupe: don't show the same alert twice */
+  if(document.getElementById('alertNotif-'+id))return;
+  var stack=document.getElementById('alertNotifStack');
+  if(!stack)return;
+  /* Enforce max banner count - remove the oldest if we're at the limit */
+  var existing=stack.querySelectorAll('.alert-notif');
+  if(existing.length>=ALERT_NOTIF_MAX){
+    var oldest=existing[0];
+    var oldestId=oldest.dataset.alertId;
+    if(ALERT_NOTIF_TIMEOUTS[oldestId]){clearTimeout(ALERT_NOTIF_TIMEOUTS[oldestId]);delete ALERT_NOTIF_TIMEOUTS[oldestId]}
+    oldest.remove();
+  }
+  /* Build the notification element */
+  var notif=document.createElement('div');
+  notif.className='alert-notif';
+  notif.id='alertNotif-'+id;
+  notif.dataset.alertId=id;
+  /* Truncate areaDesc for the subtitle if it's too long */
+  var areaText=areaDesc||'';
+  if(areaText.length>80)areaText=areaText.substring(0,77)+'...';
+  notif.innerHTML=
+    '<div class="alert-notif-icon"><i class="fas fa-triangle-exclamation"></i></div>'+
+    '<div class="alert-notif-body">'+
+      '<div class="alert-notif-title">'+esc(event)+'</div>'+
+      '<div class="alert-notif-sub">'+esc(areaText)+'</div>'+
+    '</div>'+
+    '<button class="alert-notif-close" title="Dismiss"><i class="fas fa-xmark"></i></button>';
+  /* Click anywhere on the notification (except the close button) -> switch to Current Conditions */
+  notif.addEventListener('click',function(e){
+    if(e.target.closest('.alert-notif-close'))return;
+    switchTab('current');
+    dismissAllAlertNotifications();
+  });
+  /* Close button -> dismiss just this one */
+  notif.querySelector('.alert-notif-close').addEventListener('click',function(e){
+    e.stopPropagation();
+    dismissAlertNotification(id);
+  });
+  stack.appendChild(notif);
+  /* Auto-dismiss after 30 seconds */
+  ALERT_NOTIF_TIMEOUTS[id]=setTimeout(function(){dismissAlertNotification(id)},30000);
+}
+
+/* Dismiss a single alert notification by id */
+function dismissAlertNotification(id){
+  var notif=document.getElementById('alertNotif-'+id);
+  if(notif)notif.remove();
+  if(ALERT_NOTIF_TIMEOUTS[id]){clearTimeout(ALERT_NOTIF_TIMEOUTS[id]);delete ALERT_NOTIF_TIMEOUTS[id]}
+}
+
+/* Dismiss all alert notifications at once (e.g. when switching to Current tab) */
+function dismissAllAlertNotifications(){
+  Object.keys(ALERT_NOTIF_TIMEOUTS).forEach(function(id){
+    clearTimeout(ALERT_NOTIF_TIMEOUTS[id]);
+    var n=document.getElementById('alertNotif-'+id);
+    if(n)n.remove();
+  });
+  ALERT_NOTIF_TIMEOUTS={};
+}
+
+/* Update the alert dot indicator on the Current Conditions tab button.
+   Shows a pulsing red dot when there are active alerts (any alerts, not just
+   new ones) so the user knows to check Current Conditions. Also shows the dot
+   on other tabs since Tab 1 is always monitoring. */
+function updateTabAlertDot(){
+  var hasAlerts=false;
+  if(typeof wwasCache!=='undefined'&&wwasCache&&wwasCache.length>0){
+    hasAlerts=true;
+  }
+  document.querySelectorAll('.tab-btn').forEach(function(btn){
+    btn.classList.toggle('has-alert',hasAlerts);
+  });
 }
 
 /* Stop the alert sound and hide the media player bar */
@@ -4478,11 +4715,31 @@ async function refreshAll(){
   refreshing=true;
   document.getElementById('rBtn').classList.add('spin');
   try{
-    /* Call async fetchers in parallel */
-    var asyncFns=['fWx','fAl','fAFD','fRSS','fNWSNational','fDWML','fSPCRss','fAllAv','fLocalObs','fStormEnv','fAlertMap','fWWASummary','fLSR','fGridpoint','fHeadlines'];
+    /* Always refresh Tab 1 (Current Conditions) panels - these run regardless
+       of which tab is active so alerts/WWA info stays live in the background.
+       This includes: current/hourly/7day/threats (fWx), per-location alerts
+       (fAl), alert polygon map (fAlertMap), WWA summary (fWWASummary), and
+       the static WWA map (rWWA). */
+    var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA'];
+    await Promise.all(alwaysFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
+
+    /* Refresh the active tab's panels only - saves API calls and bandwidth
+       for tabs the user isn't currently viewing. */
+    var tabAsyncFns={
+      current:[],          /* already refreshed above */
+      nws:['fAFD','fRSS','fNWSNational','fDWML','fLocalObs','fGridpoint','fHeadlines'],
+      spc:['fSPCRss'],
+      spotting:['fAllAv','fStormEnv','fLSR']
+    };
+    var tabSyncFns={
+      current:[],
+      nws:['rRadar','rMeteo'],
+      spc:['rSPCImgs','rHazards'],
+      spotting:['rSfcMap','rLightning','rRoadCams','rSkewT']
+    };
+    var asyncFns=tabAsyncFns[activeTab]||[];
+    var syncFns=tabSyncFns[activeTab]||[];
     await Promise.all(asyncFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
-    /* Call synchronous renderers */
-    var syncFns=['rSPCImgs','rRadar','rSfcMap','rMeteo','rLightning','rHazards','rRoadCams','rSkewT','rWWA','fAlertMap'];
     syncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
     mkUp('obs');
   }catch(e){console.error('Refresh error:',e)}
@@ -4494,7 +4751,10 @@ async function refreshAll(){
 async function init(){
   /* 1. Apply CONFIG to static header elements */
   applyConfigToHeader();
-  /* 2. Build all dynamic UI from data tables */
+  /* 2. Restore the saved active tab BEFORE building panels so the correct
+       pane gets the .active class on first render. */
+  loadSavedTab();
+  /* 3. Build all dynamic UI from data tables */
   buildLocTabs();
   buildPanels();
   buildSpcDayTabs();

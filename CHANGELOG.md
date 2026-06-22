@@ -1,5 +1,20 @@
 # KN Weather Center — Changelog
 
+## 2026-06-22 — Top-level tab navigation + alert notifications
+
+- **Added**: 4 top-level category tabs at the top of the page:
+  - **Current Conditions** (8 panels) — Current, Hourly Forecast, 7-Day, Threats, WWA Map, Alert Polygon Map, WWA Summary, WWA Map Color Code
+  - **NWS** (10 panels) — KGRR Radar & Loops, Hourly Forecast Graph, Forecast Discussion, NWS GRR Feed, NWS National Feed, NWS Gridpoint Forecast, GRR Office Headlines, Observations & Forecast Text, Tri-County Surface Obs Network, Precipitation & Temperature Outlook
+  - **SPC** (3 panels) — SPC Severe Weather Outlooks, Observations Map, SPC Feed
+  - **Storm Spotting** (7 panels) — Aviation, Surface Front Analysis, Forecasted SkewT Model Soundings, Storm Environment, Lightning Tracker, Local Storm Reports, Road Weather Cameras
+- **Performance**: Only the active tab's panels are refreshed on each cycle. Tab 1 (Current Conditions) panels ALWAYS refresh regardless of which tab is active, so alerts and WWA info stay live in the background. This cuts the number of API calls per refresh cycle roughly in half when viewing non-Current tabs.
+- **Added**: Floating alert notification banner. When a new NWS alert arrives while the user is on a non-Current-Conditions tab, a banner appears at the top of the viewport showing the alert event type and affected areas. Stacks up to 3 visible at once; auto-dismisses after 30 seconds. Tapping the banner switches to Current Conditions and dismisses all notifications. The EAS alert sound still plays (existing behavior).
+- **Added**: Pulsing red alert dot on tab buttons. Visible on all tabs whenever there are active NWS alerts, so the user always knows to check Current Conditions. Clears automatically when alerts expire.
+- **Added**: Active tab is saved to localStorage and restored on page refresh.
+- **Changed**: Facebook panel is now a persistent footer visible on ALL tabs (not part of any tab's panel count). It lives in its own always-active tab pane at the bottom of the page.
+- **Changed**: When switching to the Current Conditions tab, Leaflet's `alertMapInstance.invalidateSize()` is called to recompute the map layout after being hidden (Leaflet gets confused by `display:none` containers).
+- **Changed**: `refreshAll()` rewritten to be tab-aware. Always refreshes Tab 1 panels (fWx, fAl, fAlertMap, fWWASummary, rWWA) plus only the active tab's other panels.
+
 ## 2026-06-22 — Panel layout & collapse-state persistence
 
 - **Changed**: Moved Threats panel to slot 4 (immediately after 7-Day, before WWA Map). It now sits with the top at-a-glance panels instead of being buried at slot 7.
