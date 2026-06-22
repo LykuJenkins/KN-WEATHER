@@ -78,6 +78,14 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .rbtn{width:34px;height:34px;border-radius:50%;background:var(--acc-g);border:1px solid var(--bdr);color:var(--acc);font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.25s;flex-shrink:0}
 .rbtn:hover{background:var(--acc);color:#fff;box-shadow:0 0 14px var(--acc-g)}
 .rbtn.spin i{animation:sp .8s linear infinite}
+/* Notification bell button - shows permission state via color
+   Default: purple (not yet asked)
+   .granted: green (notifications enabled)
+   .denied: grey (user denied or browser doesn't support) */
+#notifBtn.granted{background:rgba(52,211,153,.15);border-color:#34d399;color:#34d399}
+#notifBtn.granted:hover{background:#34d399;color:#fff;box-shadow:0 0 14px rgba(52,211,153,.4)}
+#notifBtn.denied{opacity:.4;cursor:not-allowed}
+#notifBtn.denied:hover{background:var(--acc-g);color:var(--acc);box-shadow:none}
 
 /* Settings dropdown menu */
 .settings-wrap{position:relative}
@@ -593,6 +601,7 @@ body.capturing .wwas-item-actions{display:none!important}
   </div>
   <div class="hdr-c">
     <button class="rbtn" id="rBtn" onclick="refreshAll()" title="Refresh all data"><i class="fas fa-arrows-rotate"></i></button>
+    <button class="rbtn" id="notifBtn" onclick="toggleNotificationPermission()" title="Enable alert notifications"><i class="fas fa-bell"></i></button>
     <div class="settings-wrap">
       <button class="rbtn" id="settingsBtn" onclick="toggleSettings()" title="Settings"><i class="fas fa-gear"></i></button>
       <div class="settings-menu" id="settingsMenu">
@@ -3337,7 +3346,12 @@ async function fWWASummary(){
        Storm Spotting). Tapping the notification switches to Current Conditions.
        Skip on first load so we don't spam notifications for pre-existing alerts. */
     if(hasNewAlerts&&!isFirstLoad){
-      newAlerts.forEach(function(a){showAlertNotification(a.event,a.areaDesc,a.id)});
+      newAlerts.forEach(function(a){
+        showAlertNotification(a.event,a.areaDesc,a.id);
+        /* Also fire a native OS notification (only fires if page is hidden
+           and user has enabled notifications via the bell button). */
+        showNativeNotification(a.event,a.areaDesc,a.id);
+      });
     }
     renderWwasContent();
     /* Always sync the alert dot - shows it for unseen alerts, clears when
@@ -3362,6 +3376,119 @@ function playWwasAlertSound(){
   player.style.display='block';
   var pr=audio.play();
   if(pr)pr.then(function(){}).catch(function(e){console.warn('Alert sound autoplay blocked:',e)});
+}
+
+/* ── Native OS notifications (browser Notification API) ──────────────────────
+   Uses the browser's built-in Notification API to show OS-level alerts
+   (system tray / notification center) when a new NWS alert arrives AND the
+   page is NOT visible (tab in background or minimized). When the page is
+   visible, the floating banner notification (showAlertNotification) is used
+   instead since the user can see it directly.
+
+   Permission flow:
+   1. User clicks the bell button (#notifBtn) in the header
+   2. Browser shows the native permission prompt
+   3. If granted, the bell turns green and notifications are enabled
+   4. If denied, the bell turns grey and is disabled
+   5. Permission state is persisted in localStorage so it survives refresh */
+var NOTIF_PREF_KEY='kn_weather_notif_pref';  /* 'enabled' | 'disabled' | null */
+
+/* Update the bell button's visual state based on current permission */
+function updateNotifBtnState(){
+  var btn=document.getElementById('notifBtn');
+  if(!btn)return;
+  btn.classList.remove('granted','denied');
+  if(!('Notification' in window)){
+    btn.classList.add('denied');
+    btn.title='Notifications not supported by this browser';
+    return;
+  }
+  if(Notification.permission==='granted'){
+    btn.classList.add('granted');
+    btn.title='Alert notifications enabled - click to disable';
+  }else if(Notification.permission==='denied'){
+    btn.classList.add('denied');
+    btn.title='Notifications blocked - enable in browser settings';
+  }else{
+    btn.title='Enable alert notifications';
+  }
+}
+
+/* Toggle notification permission on bell button click.
+   If not asked yet, request permission.
+   If granted, disable (just update preference - can't revoke OS permission).
+   If denied, show a toast telling the user to enable in browser settings. */
+function toggleNotificationPermission(){
+  if(!('Notification' in window)){
+    showToast('Notifications not supported by this browser',true);
+    return;
+  }
+  if(Notification.permission==='granted'){
+    /* User wants to disable - we can't revoke OS permission, but we can
+       stop sending notifications by setting the preference to 'disabled'. */
+    try{localStorage.setItem(NOTIF_PREF_KEY,'disabled')}catch(e){}
+    showToast('Alert notifications disabled');
+    updateNotifBtnState();
+    return;
+  }
+  if(Notification.permission==='denied'){
+    showToast('Enable notifications in your browser settings',true);
+    return;
+  }
+  /* Ask the browser for permission */
+  Notification.requestPermission().then(function(perm){
+    if(perm==='granted'){
+      try{localStorage.setItem(NOTIF_PREF_KEY,'enabled')}catch(e){}
+      showToast('Alert notifications enabled');
+      /* Show a test notification so the user knows what to expect */
+      try{
+        new Notification('KN Weather Center',{body:'Alert notifications are now enabled. You will be notified when NWS issues new alerts for the Tri-County area.',icon:'./profile_picture.png'});
+      }catch(e){console.warn('Test notification failed:',e)}
+    }else{
+      showToast('Notifications not enabled',true);
+    }
+    updateNotifBtnState();
+  });
+}
+
+/* Check if native notifications are enabled and the user wants them.
+   Returns true only if: browser supports Notification API, permission is
+   granted, AND the user hasn't disabled them via the bell button. */
+function nativeNotifsEnabled(){
+  if(!('Notification' in window))return false;
+  if(Notification.permission!=='granted')return false;
+  try{
+    var pref=localStorage.getItem(NOTIF_PREF_KEY);
+    if(pref==='disabled')return false;
+  }catch(e){}
+  return true;
+}
+
+/* Show a native OS notification for a new alert.
+   Only fires when:
+   1. Native notifications are enabled (permission granted + pref != disabled)
+   2. The page is NOT visible (document.hidden) - if the page is visible, the
+      floating banner notification (showAlertNotification) handles it instead.
+   3. The alert wasn't already shown as a native notification (dedupe by id). */
+var nativeNotifShownIds={};
+function showNativeNotification(event,areaDesc,id){
+  if(!nativeNotifsEnabled())return;
+  if(!document.hidden)return;  /* page is visible - floating banner handles it */
+  if(nativeNotifShownIds[id])return;  /* already shown */
+  nativeNotifShownIds[id]=true;
+  try{
+    var n=new Notification('NWS Alert: '+event,{
+      body:areaDesc||'Click to view details',
+      icon:'./profile_picture.png',
+      tag:id,  /* dedupe across notifications with the same id */
+      requireInteraction:true  /* stay visible until user dismisses (for warnings) */
+    });
+    n.onclick=function(){
+      window.focus();
+      switchTab('current');
+      n.close();
+    };
+  }catch(e){console.warn('Native notification failed:',e)}
 }
 
 /* ── Floating alert notification banner ────────────────────────────────────── */
@@ -4936,6 +5063,8 @@ async function init(){
      never toggled, fall back to each panel's defaultCollapsed flag (e.g. WWA
      Color Code starts collapsed to keep the page compact). */
   applySavedPanelStates();
+  /* Update the notification bell button to reflect current OS permission state */
+  updateNotifBtnState();
   /* Set dynamic panel titles for the initial location */
   updateDynamicTitles();
   /* Trigger Facebook plugin parsing (the fb-page element was just built by buildPanels()).
