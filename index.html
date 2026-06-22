@@ -604,10 +604,9 @@ body.capturing .wwas-item-actions{display:none!important}
   </div>
 </div>
 
-<!-- Location tabs are generated from LOCATIONS by buildLocTabs() -->
-<div class="loc-tabs" id="locTabs"></div>
-
-<!-- Top-level category tab bar - switches between panel groups -->
+<!-- Top-level category tab bar - switches between panel groups.
+     Placed ABOVE the county tabs so the 4 main categories are always the
+     primary navigation. -->
 <div class="tab-bar" id="tabBar">
   <button class="tab-btn on" data-tab="current" onclick="switchTab('current')">
     <i class="fas fa-house"></i>
@@ -630,6 +629,13 @@ body.capturing .wwas-item-actions{display:none!important}
     <span class="tab-alert-dot"></span>
   </button>
 </div>
+
+<!-- Location tabs (Van Buren / Allegan / Kalamazoo) - generated from LOCATIONS
+     by buildLocTabs(). Only visible when the Current Conditions tab is active
+     since the per-location panels (Current, Hourly, 7-Day, Threats, Meteo,
+     Gridpoint, DWML) live on that tab. Hidden on NWS/SPC/Storm Spotting
+     because those tabs are county-agnostic. -->
+<div class="loc-tabs" id="locTabs"></div>
 
 <!-- Floating alert notification stack - shown when a new alert arrives while
      the user is on a non-Current-Conditions tab. Populated by
@@ -1241,6 +1247,11 @@ function switchTab(tabId){
     if(pane.id==='tabpane-fb')return;  /* footer is always visible */
     pane.classList.toggle('active',pane.id==='tabpane-'+tabId);
   });
+  /* County location tabs only make sense on Current Conditions (where the
+     per-location panels live). Hide them on NWS/SPC/Storm Spotting since
+     those tabs are county-agnostic. */
+  var locTabs=document.getElementById('locTabs');
+  if(locTabs)locTabs.style.display=(tabId==='current')?'':'none';
   /* Save to localStorage so refresh restores the same tab */
   try{localStorage.setItem(TAB_STORAGE_KEY,tabId)}catch(e){}
   /* If switching to Current Conditions tab, force Leaflet to recompute size
@@ -1265,6 +1276,9 @@ function loadSavedTab(){
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     btn.classList.toggle('on',btn.dataset.tab===activeTab);
   });
+  /* Apply county-tab visibility based on the restored active tab */
+  var locTabs=document.getElementById('locTabs');
+  if(locTabs)locTabs.style.display=(activeTab==='current')?'':'none';
 }
 
 /* ── Build SPC day tabs from SPC_DAYS ──────────────────────────────────────── */
