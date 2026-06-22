@@ -1256,11 +1256,17 @@ function switchTab(tabId){
   try{localStorage.setItem(TAB_STORAGE_KEY,tabId)}catch(e){}
   /* If switching to Current Conditions tab, force Leaflet to recompute size
      (it gets confused when its container was display:none) */
-  if(tabId==='current'&&typeof alertMapInstance!=='undefined'&&alertMapInstance){
-    setTimeout(function(){alertMapInstance.invalidateSize()},100);
-    /* Also dismiss any floating alert notifications since the user is now
-       looking at the Current Conditions tab where alerts are visible directly. */
+  if(tabId==='current'){
+    if(typeof alertMapInstance!=='undefined'&&alertMapInstance){
+      setTimeout(function(){alertMapInstance.invalidateSize()},100);
+    }
+    /* Dismiss floating alert notifications since the user is now looking at
+       the Current Conditions tab where alerts are visible directly. */
     dismissAllAlertNotifications();
+    /* Mark all current alerts as seen so the alert dot clears. The dot only
+       shows for NEW unseen alerts, so visiting Current Conditions = "I've seen
+       them" -> dot disappears until the next new alert arrives. */
+    markAllCurrentAlertsSeen();
   }
 }
 
@@ -3203,6 +3209,11 @@ async function fWWASummary(){
     var newAlerts=[];   /* collect details for the floating notification */
     var fiveMinAgo=now-5*60*1000;
     var currentIds={};
+    /* Capture first-load state BEFORE we update wwasPrevIds below.
+       hadPrevIds is true if we had alerts from a previous run (i.e. this is
+       NOT the first load). Used to suppress sound/notifications/dots for
+       pre-existing alerts on initial page load. */
+    var hadPrevIds=wwasPrevIds&&Object.keys(wwasPrevIds).length>0;
     features.forEach(function(f){
       var id=f.id||f.properties.id||(f.properties.event+'|'+(f.properties.areaDesc||''));
       currentIds[id]=true;
@@ -3223,22 +3234,35 @@ async function fWWASummary(){
       }
     });
     wwasPrevIds=currentIds;
+    /* On first load (wwasPrevIds was empty before this run), mark all current
+       alerts as "seen" so the dot doesn't appear for pre-existing alerts the
+       user hasn't actually seen "newly". Only alerts issued AFTER page load
+       should trigger the dot. */
+    var isFirstLoad=!hadPrevIds;
+    if(isFirstLoad){
+      var seenInit=getSeenAlertIds();
+      features.forEach(function(f){
+        var id=f.id||f.properties.id||(f.properties.event+'|'+(f.properties.areaDesc||''));
+        seenInit[id]=Date.now();
+      });
+      saveSeenAlertIds(seenInit);
+    }
     /* Play alert sound if new alerts detected AND not muted AND not first load */
     var muteCb=document.getElementById('wwasMuteSound');
     var isMuted=muteCb?muteCb.checked:false;
-    if(hasNewAlerts&&!isMuted&&Object.keys(wwasPrevIds).length>0){
+    if(hasNewAlerts&&!isMuted&&!isFirstLoad){
       playWwasAlertSound();
     }
     /* Show floating notification for each new alert if the user is NOT on the
        Current Conditions tab (so they get notified even when viewing NWS/SPC/
-       Storm Spotting). Tapping the notification switches to Current Conditions. */
-    if(hasNewAlerts&&Object.keys(wwasPrevIds).length>0){
+       Storm Spotting). Tapping the notification switches to Current Conditions.
+       Skip on first load so we don't spam notifications for pre-existing alerts. */
+    if(hasNewAlerts&&!isFirstLoad){
       newAlerts.forEach(function(a){showAlertNotification(a.event,a.areaDesc,a.id)});
-      /* Update the alert dot on the Current Conditions tab */
-      updateTabAlertDot();
     }
     renderWwasContent();
-    /* Always sync the alert dot - clears it when alerts expire */
+    /* Always sync the alert dot - shows it for unseen alerts, clears when
+       all current alerts have been seen (e.g. after visiting Current Conditions) */
     updateTabAlertDot();
     mkUp('wwas');
   }catch(e){
@@ -3335,17 +3359,63 @@ function dismissAllAlertNotifications(){
   ALERT_NOTIF_TIMEOUTS={};
 }
 
-/* Update the alert dot indicator on the Current Conditions tab button.
-   Shows a pulsing red dot when there are active alerts (any alerts, not just
-   new ones) so the user knows to check Current Conditions. Also shows the dot
-   on other tabs since Tab 1 is always monitoring. */
-function updateTabAlertDot(){
-  var hasAlerts=false;
-  if(typeof wwasCache!=='undefined'&&wwasCache&&wwasCache.length>0){
-    hasAlerts=true;
-  }
+/* Update the alert dot indicator on tab buttons.
+   The dot shows ONLY when there are active alerts the user hasn't seen yet
+   (i.e. alerts that arrived since the last time they visited the Current
+   Conditions tab). Once the user switches to Current Conditions, all current
+   alerts are marked as seen and the dot clears.
+   On first page load, all currently-active alerts are marked as seen so the
+   dot doesn't appear for pre-existing alerts the user hasn't actually seen
+   "newly" - only alerts issued AFTER the page loads trigger the dot. */
+var SEEN_ALERTS_KEY='kn_weather_seen_alerts';
+function getSeenAlertIds(){
+  try{
+    var raw=localStorage.getItem(SEEN_ALERTS_KEY);
+    if(!raw)return {};
+    var parsed=JSON.parse(raw);
+    return parsed&&typeof parsed==='object'?parsed:{};
+  }catch(e){return {}}
+}
+function saveSeenAlertIds(seen){
+  try{localStorage.setItem(SEEN_ALERTS_KEY,JSON.stringify(seen))}catch(e){}
+}
+/* Mark all currently-active alerts as seen (called when user visits Current
+   Conditions tab). Also prunes expired alert IDs from the seen map so it
+   doesn't grow unbounded over time. */
+function markAllCurrentAlertsSeen(){
+  if(typeof wwasCache==='undefined'||!wwasCache)return;
+  var seen=getSeenAlertIds();
+  var currentIds={};
+  wwasCache.forEach(function(f){
+    var id=f.id||f.properties.id||(f.properties.event+'|'+(f.properties.areaDesc||''));
+    currentIds[id]=Date.now();
+  });
+  /* Merge: keep current IDs (just-marked-seen) + drop IDs that are no longer
+     active (expired) to prevent unbounded growth. */
+  var merged={};
+  Object.keys(currentIds).forEach(function(id){merged[id]=currentIds[id]});
+  /* Also keep any previously-seen IDs that are still in currentIds (re-affirmed above) */
+  saveSeenAlertIds(merged);
+  /* Clear the dot */
   document.querySelectorAll('.tab-btn').forEach(function(btn){
-    btn.classList.toggle('has-alert',hasAlerts);
+    btn.classList.remove('has-alert');
+  });
+}
+/* Check if there are any unseen active alerts. Returns the count. */
+function countUnseenAlerts(){
+  if(typeof wwasCache==='undefined'||!wwasCache||wwasCache.length===0)return 0;
+  var seen=getSeenAlertIds();
+  var unseen=0;
+  wwasCache.forEach(function(f){
+    var id=f.id||f.properties.id||(f.properties.event+'|'+(f.properties.areaDesc||''));
+    if(!seen[id])unseen++;
+  });
+  return unseen;
+}
+function updateTabAlertDot(){
+  var unseen=countUnseenAlerts();
+  document.querySelectorAll('.tab-btn').forEach(function(btn){
+    btn.classList.toggle('has-alert',unseen>0);
   });
 }
 
