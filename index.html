@@ -11,11 +11,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KN Weather">
 <meta name="application-name" content="KN Weather">
-<meta name="description" content="KN Weather Center — Storm Operations, Kalamazoo, MI">
+<meta name="description" content="KN Weather Center - Storm Operations For Allegan, Kalamazoo, &amp; Van Buren Counties">
 <!-- Inline SVG favicon (purple circle with KN) as a data URI -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23a855f6'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-size='44' font-weight='bold' fill='white' text-anchor='middle'%3EKN%3C/text%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="./profile_picture.png">
-<!-- Web app manifest — generated at runtime by the PWA init script below -->
+<!-- Web app manifest - generated at runtime by the PWA init script below -->
 <link rel="manifest" id="manifestLink">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -64,7 +64,7 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .mtb-cancel{background:rgba(255,255,255,.04);border-color:var(--bdr);color:var(--t2)}
 .mtb-cancel:hover{border-color:var(--dng);color:var(--dng)}
 
-/* Panel position selector — shown on each panel when in Move Panels mode.
+/* Panel position selector - shown on each panel when in Move Panels mode.
    Uses up/down arrow buttons that swap panels in real time. */
 .panel-pos-wrap{display:none;align-items:center;gap:2px;margin-right:6px;flex-shrink:0;background:rgba(168,85,246,.1);border:1px solid var(--acc);border-radius:6px;padding:2px}
 .panel-pos-wrap.open{display:flex}
@@ -107,7 +107,7 @@ body.move-mode .c:hover{border-color:var(--acc)}
 .aban.d{background:var(--dng-g);border-color:rgba(251,113,133,.25);color:var(--dng)}
 @keyframes sd{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 
-/* Tab strips (generic — used by locations, SPC days, radar views, SPC products, aviation) */
+/* Tab strips (generic - used by locations, SPC days, radar views, SPC products, aviation) */
 .loc-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;backdrop-filter:blur(16px)}
 .loc-tab{flex:1;min-width:160px;padding:10px 14px;font-size:11px;font-weight:600;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);cursor:pointer;transition:.2s;color:var(--t3);text-align:center;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px}
 .loc-tab i{font-size:12px}
@@ -129,7 +129,7 @@ body.move-mode .c:hover{border-color:var(--acc)}
 .cb-u{background:var(--wrn-g);color:var(--wrn);border:1px solid rgba(251,191,36,.18)}
 .ut{font-size:8px;color:var(--t3);font-family:'JetBrains Mono',monospace;white-space:nowrap}
 
-/* Panel action buttons (copy / screenshot) — appear in the panel header */
+/* Panel action buttons (copy / screenshot) - appear in the panel header */
 .ch-actions{display:flex;gap:4px;align-items:center}
 .act-btn{width:24px;height:24px;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--t3);font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.2s;flex-shrink:0;padding:0}
 .act-btn:hover{background:var(--acc-g);border-color:var(--acc);color:var(--acc)}
@@ -151,7 +151,7 @@ body.move-mode .c:hover{border-color:var(--acc)}
 .act-shot-preview .sp-btn.dl{background:var(--suc-g);border-color:var(--suc);color:var(--suc)}
 .act-shot-preview .sp-btn.dl:hover{background:var(--suc);color:var(--bg)}
 
-/* Screenshot branding stamp — replaces action buttons during capture.
+/* Screenshot branding stamp - replaces action buttons during capture.
    Shows the KN logo + current date/time stamp in the panel header. */
 .shot-brand{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .shot-brand-logo{width:24px;height:24px;border-radius:50%;overflow:hidden;border:1.5px solid var(--acc);background:linear-gradient(135deg,var(--acc),#6d28d9);flex-shrink:0}
@@ -174,7 +174,7 @@ body.capturing .cu .tmp{
 }
 .g1{grid-column:1}.g2{grid-column:2}.g3{grid-column:3;grid-row:1/3}.gf{grid-column:1/4}
 
-/* Collapsible (generic — any panel with .collapsible + .collapse-toggle becomes toggleable) */
+/* Collapsible (generic - any panel with .collapsible + .collapse-toggle becomes toggleable) */
 .collapse-toggle{cursor:pointer;user-select:none;transition:color .2s}
 .collapse-toggle:hover{color:var(--acc)}
 .collapse-toggle .collapse-icon{font-size:10px;margin-right:4px;transition:transform .25s ease;color:var(--t2)}
@@ -223,7 +223,7 @@ body.capturing .cu .tmp{
 .fp{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--acc);text-align:right}
 .fp i{font-size:8px;margin-right:1px}
 
-/* Generic tab strip (sub-tabs inside panels — SPC days, radar views, SPC products, aviation) */
+/* Generic tab strip (sub-tabs inside panels - SPC days, radar views, SPC products, aviation) */
 .st{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
 .stb{padding:6px 10px;text-align:center;font-size:9px;font-weight:600;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);cursor:pointer;transition:.2s;color:var(--t3);display:flex;align-items:center;gap:6px}
 .stb i{font-size:11px}
@@ -494,7 +494,7 @@ body.capturing .wwas-item-actions{display:none!important}
 .meteo-wrap .img-stage{background:#fff}
 .meteo-wrap .img-stage img{width:100%;max-width:1100px}
 
-/* Facebook — responsive */
+/* Facebook - responsive */
 .fb-section{grid-column:1/4;padding:0;overflow:hidden;background:transparent;border:none;backdrop-filter:none;max-width:100%;min-width:0}
 .fb-section:hover{background:transparent;border-color:var(--bdr)}
 .fb-wrap{display:flex;justify-content:center;padding:14px 0;width:100%;max-width:100%;min-width:0}
@@ -538,8 +538,8 @@ body.capturing .wwas-item-actions{display:none!important}
 <div class="app">
 <header class="hdr">
   <div class="hdr-l">
-    <div class="logo"><img id="logoImg" src="" alt="KN" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="logo-fb">KN</span></div>
-    <div class="logo-t"><h1 id="siteTitle">KN Weather Center</h1><span id="siteSubtitle">Storm Operations &mdash; Kalamazoo, MI</span></div>
+    <div class="logo"><img id="logoImg" alt="KN" onerror="if(this.src){this.style.display='none';this.nextElementSibling.style.display='flex'}"><span class="logo-fb">KN</span></div>
+    <div class="logo-t"><h1 id="siteTitle">KN Weather Center</h1><span id="siteSubtitle">Storm Operations For Allegan, Kalamazoo, &amp; Van Buren Counties</span></div>
   </div>
   <div class="hdr-c">
     <button class="rbtn" id="rBtn" onclick="refreshAll()" title="Refresh all data"><i class="fas fa-arrows-rotate"></i></button>
@@ -558,9 +558,9 @@ body.capturing .wwas-item-actions{display:none!important}
 </header>
 <div class="aban" id="aban"><div style="font-size:16px"><i class="fas fa-triangle-exclamation"></i></div><div style="flex:1;font-size:11px;font-weight:500" id="abt"></div><div style="font-size:9px;opacity:.7;white-space:nowrap" id="abm"></div></div>
 
-<!-- Move Panels toolbar — shown only when the user enters "Move Panels" mode -->
+<!-- Move Panels toolbar - shown only when the user enters "Move Panels" mode -->
 <div class="move-toolbar" id="moveToolbar">
-  <div class="move-tb-left"><i class="fas fa-arrows-up-down-left-right"></i><span>Move Panels Mode</span> — enter a new position number on each panel to reorder</div>
+  <div class="move-tb-left"><i class="fas fa-arrows-up-down-left-right"></i><span>Move Panels Mode</span> - enter a new position number on each panel to reorder</div>
   <div class="move-tb-right">
     <button class="mtb-btn mtb-save" onclick="savePanelOrder()"><i class="fas fa-check"></i> Save Order</button>
     <button class="mtb-btn mtb-cancel" onclick="cancelMovePanels()"><i class="fas fa-xmark"></i> Cancel</button>
@@ -576,13 +576,13 @@ body.capturing .wwas-item-actions{display:none!important}
 <footer class="ft">
   <div id="ftData">Data: NOAA / NWS / SPC / Open-Meteo / aviationweather.gov / Blitzortung / WPC</div>
   <div class="ft-links" id="ftLinks"></div>
-  <div>KN Weather Center &mdash; Not affiliated with any government agency</div>
+  <div>KN Weather Center - Not affiliated with any government agency</div>
 </footer>
 </div>
 
 <script>
 /* ════════════════════════════════════════════════════════════════════════════
-   KN WEATHER CENTER — REFACTORED
+   KN WEATHER CENTER - REFACTORED
    All editable configuration is centralized below. To add/change a feature,
    edit the relevant table; everything cascades to the UI automatically.
 
@@ -604,7 +604,7 @@ body.capturing .wwas-item-actions{display:none!important}
 
 var CONFIG={
   siteName:'KN Weather Center',
-  siteSubtitle:'Storm Operations \u2014 Kalamazoo, MI',
+  siteSubtitle:'Storm Operations For Allegan, Kalamazoo, & Van Buren Counties',
   logoUrl:'./profile_picture.png',
   tz:'America/New_York',
   nwsOffice:'GRR',              /* NWS forecast office (used in URLs) */
@@ -612,7 +612,7 @@ var CONFIG={
   ndfdSector:'GRR',              /* NDFD image sector */
   ndfdTimezone:'EDT',            /* NDFD image timezone */
   refreshIntervalMs:3e5,         /* 5 minutes */
-  /* NOAA Weather Radio streams — array of stations. Add a row to add a station;
+  /* NOAA Weather Radio streams - array of stations. Add a row to add a station;
      the header station selector is generated from this array. */
   nwrStations:[
     {key:'WWF34',label:'WWF34 Kalamazoo',stream:'https://icecast.wxstream.org/NWR/WWF34',freq:'162.400'},
@@ -751,7 +751,7 @@ var WMO={
 
 <script>
 /* ════════════════════════════════════════════════════════════════════════════
-   PANELS — declarative panel registry.
+   PANELS - declarative panel registry.
    Each row = ONE card on the page. Order in this array = order on the page.
    To move a panel, reorder this array. To add a panel, add a row.
 
@@ -802,7 +802,7 @@ var PANELS=[
     id:'wwa',title:'WWA Map',icon:'fa-triangle-exclamation',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-wwa',refreshFn:'rWWA',collapsible:true,
-    body:'<div class="img-stage"><img id="wwaImg" src="'+CONFIG.wwaMapUrl+'" alt="Warnings, Watches, and Advisories Map" loading="lazy"><div class="img-cap">NWS '+CONFIG.nwsOffice+' &mdash; Warnings, Watches &amp; Advisories</div></div>'
+    body:'<div class="img-stage"><img id="wwaImg" src="'+CONFIG.wwaMapUrl+'" alt="Warnings, Watches, and Advisories Map" loading="lazy"><div class="img-cap">NWS '+CONFIG.nwsOffice+' - Warnings, Watches &amp; Advisories</div></div>'
   },
   /* 4b. WWA Map Color Code (legend for the WWA Map above) */
   {
@@ -816,7 +816,7 @@ var PANELS=[
     id:'alertMap',title:'Alert Polygon Map',icon:'fa-map-location-dot',
     badge:'Live',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-amap',refreshFn:'fAlertMap',collapsible:true,
-    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR — Grand Rapids</option><option value="KIWX">KIWX — Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
+    body:'<div class="alert-map-wrap"><div id="alertMap"></div><div class="alert-map-count" id="alertMapCount">Loading alerts...</div><div class="alert-map-controls" id="alertMapControls"><label><input type="checkbox" id="amLayerWarnings" checked onchange="fAlertMap()"> Warnings</label><label><input type="checkbox" id="amLayerWatches" checked onchange="fAlertMap()"> Watches</label><label><input type="checkbox" id="amLayerAdvisories" checked onchange="fAlertMap()"> Advisories</label><label><input type="checkbox" id="amLayerCounties" checked onchange="fAlertMap()"> County Labels</label><label style="background:rgba(168,85,246,.15);border:1px solid #a855f6;border-radius:4px;padding:2px 4px"><input type="checkbox" id="amLayerFocus" onchange="fAlertMap()"> <i class="fas fa-crosshairs" style="color:#a855f6"></i> Tri-County Focus</label><div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)"><label style="font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em">Radar Station</label><select id="amRadarStation" onchange="toggleRadarOverlay()" style="width:100%;background:var(--bg2);border:1px solid var(--bdr);color:var(--t2);font-size:9px;padding:3px 4px;border-radius:4px;margin-top:2px"><option value="KGRR">KGRR - Grand Rapids</option><option value="KIWX">KIWX - Northern Indiana</option></select><label style="margin-top:4px"><input type="checkbox" id="amLayerRefl" onchange="toggleRadarOverlay()"> Reflectivity</label><label><input type="checkbox" id="amLayerVel" onchange="toggleRadarOverlay()"> Velocity</label></div></div><div class="alert-map-legend" id="alertMapLegend"></div></div>'
   },
   /* 4d. WWA Summary (text-based active alerts with category filters) */
   {
@@ -920,7 +920,7 @@ var PANELS=[
     id:'spcRss',title:'SPC Feed',icon:'fa-satellite-dish',
     badge:'Updating',badgeClass:'cb-u',gridClass:'gf',
     updateId:'upd-spcr',refreshFn:'fSPCRss',collapsible:true,
-    body:'<div class="img-stage" style="margin-bottom:10px"><img src="https://www.spc.noaa.gov/products/watch/validww.png" alt="SPC Valid Watches Map" loading="lazy" style="width:100%;height:auto;display:block" id="spcValidWwImg"><div class="img-cap">SPC &mdash; Valid Watches Map (auto-refreshes with cache-busting)</div></div><div class="st" id="spcRssTabs"></div><div class="spc-rss-list" id="spcRL"><div class="lt"><i class="fas fa-spinner"></i>Loading SPC feeds...</div></div>'
+    body:'<div class="img-stage" style="margin-bottom:10px"><img src="https://www.spc.noaa.gov/products/watch/validww.png" alt="SPC Valid Watches Map" loading="lazy" style="width:100%;height:auto;display:block" id="spcValidWwImg"><div class="img-cap">SPC - Valid Watches Map (auto-refreshes with cache-busting)</div></div><div class="st" id="spcRssTabs"></div><div class="spc-rss-list" id="spcRL"><div class="lt"><i class="fas fa-spinner"></i>Loading SPC feeds...</div></div>'
   },
   /* 16. Aviation */
   {
@@ -934,9 +934,9 @@ var PANELS=[
     id:'sfc',title:'Surface Front Analysis',icon:'fa-map',
     badge:'WPC',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-sfc',refreshFn:'rSfcMap',collapsible:true,
-    body:'<div class="img-stage"><img id="sfcImg" src="'+CONFIG.surfaceFrontUrl+'" alt="Surface Front Analysis" loading="lazy"><div class="img-cap">NOAA WPC &mdash; U.S. Surface Fronts &amp; Pressure (09Z)</div></div>'
+    body:'<div class="img-stage"><img id="sfcImg" src="'+CONFIG.surfaceFrontUrl+'" alt="Surface Front Analysis" loading="lazy"><div class="img-cap">NOAA WPC - U.S. Surface Fronts &amp; Pressure (09Z)</div></div>'
   },
-  /* 18. Forecasted SkewT Model Soundings (NCEP GFS/NAM) — tabbed by model */
+  /* 18. Forecasted SkewT Model Soundings (NCEP GFS/NAM) - tabbed by model */
   {
     id:'skewt',title:'Forecasted SkewT Model Soundings',icon:'fa-chart-area',
     badge:'NCEP',badgeClass:'cb-l',gridClass:'gf',
@@ -982,7 +982,7 @@ var PANELS=[
     updateId:'upd-lt',refreshFn:'rLightning',collapsible:true,
     body:'<div class="map-stage"><iframe id="lightningFrame" src="'+CONFIG.lightningMapUrl+'" loading="lazy" title="Blitzortung Lightning Map"></iframe></div>'
   },
-  /* 19b. Local Storm Reports (LSR) — above Road Weather Cameras */
+  /* 19b. Local Storm Reports (LSR) - above Road Weather Cameras */
   {
     id:'lsr',title:'Local Storm Reports',icon:'fa-clipboard-list',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
@@ -1005,14 +1005,14 @@ var PANELS=[
   }
 ];
 
-/* REFRESH_FNS — registry of functions called by refreshAll().
+/* REFRESH_FNS - registry of functions called by refreshAll().
    Adding a function name here makes it part of the auto-refresh cycle. */
 var REFRESH_FNS=['fWx','fAl','fAFD','fRSS','fDWML','fSPCRss','fAllAv','rSPCImgs','rRadar','rSfcMap','rMeteo','rLightning','rHazards'];
 </script>
 
 <script>
 /* ════════════════════════════════════════════════════════════════════════════
-   RUNTIME — generic builders + utilities
+   RUNTIME - generic builders + utilities
    Everything below is generic and data-driven. To change site behavior,
    edit the data tables above; you should rarely need to edit this section.
    ════════════════════════════════════════════════════════════════════════════ */
@@ -1042,14 +1042,14 @@ function to(ms){return new Promise(function(_,r){setTimeout(function(){r(new Err
 /* Fetch with multiple CORS proxy fallbacks.
    Tries: (1) direct fetch, (2) allorigins /raw, (3) allorigins /get (JSON .contents).
    The /raw endpoint 500-errors on some target URLs (e.g. aviationweather.gov),
-   so /get is used as a final fallback — it returns JSON with the body in .contents. */
+   so /get is used as a final fallback - it returns JSON with the body in .contents. */
 async function fP(u){
   /* 1. Direct fetch (works when the target API sends CORS headers, or when
         served from the same origin) */
   try{return await Promise.race([fetch(u).then(function(r){if(r.ok)return r.text();throw 0}),to(10e3)])}catch(e){}
   /* 2. allorigins /raw proxy (returns the target body directly) */
   try{return await Promise.race([fetch(CONFIG.corsProxy+encodeURIComponent(u)).then(function(r){if(r.ok)return r.text();throw 0}),to(12e3)])}catch(e2){}
-  /* 3. allorigins /get proxy (returns JSON {contents:...}) — used when /raw fails
+  /* 3. allorigins /get proxy (returns JSON {contents:...}) - used when /raw fails
         with a 500 error (happens for aviationweather.gov and some other APIs) */
   try{
     var res=await Promise.race([fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u)).then(function(r){if(r.ok)return r.json();throw 0}),to(12e3)]);
@@ -1067,7 +1067,7 @@ function applyConfigToHeader(){
   document.getElementById('siteTitle').textContent=CONFIG.siteName;
   document.getElementById('siteSubtitle').innerHTML=CONFIG.siteSubtitle;
   document.getElementById('nwrFq').textContent=getActiveNwrStation().key+' '+getActiveNwrStation().freq;
-  /* Wire up station switching — click the frequency label to cycle to the next station */
+  /* Wire up station switching - click the frequency label to cycle to the next station */
   var fqEl=document.getElementById('nwrFq');
   if(fqEl&&!fqEl.dataset.bound){
     fqEl.dataset.bound='1';
@@ -1100,14 +1100,14 @@ function buildPanels(){
   var grid=document.getElementById('mainGrid');
   grid.innerHTML=PANELS.map(function(p){
     if(p.id==='fb'){
-      /* Facebook panel has no header — just the body. Give it an id so it can
+      /* Facebook panel has no header - just the body. Give it an id so it can
          be tracked for panel reordering (always stays last). */
       return '<div class="c '+p.gridClass+(p.extraClass?' '+p.extraClass:'')+'" id="panel-fb">'+p.body+'</div>';
     }
     var cls=['c',p.gridClass];
     if(p.extraClass)cls.push(p.extraClass);
     if(p.collapsible)cls.push('collapsible');
-    /* Action buttons — always add a screenshot button, plus any panel-specific actions */
+    /* Action buttons - always add a screenshot button, plus any panel-specific actions */
     var actions=(p.actions||[]).slice();
     /* Auto-add screenshot button to all panels except FB */
     actions.push({type:'screenshot',label:'Export Screenshot',icon:'fa-camera'});
@@ -1122,7 +1122,7 @@ function buildPanels(){
     /* For dynamicTitle panels, wrap the title text in a span with an id so we can update it */
     var titleId=p.dynamicTitle?('id="title-'+p.id+'"'):'';
     var titleText='<span '+titleId+'>'+p.title+'</span>';
-    /* Position selector (up/down arrows + number) — hidden by default, shown in Move Panels mode */
+    /* Position selector (up/down arrows + number) - hidden by default, shown in Move Panels mode */
     var posHtml='<div class="panel-pos-wrap" id="posWrap-'+p.id+'">'+
       '<button class="pos-arrow pos-up" onclick="movePanelUp(\''+p.id+'\')" title="Move panel up"><i class="fas fa-chevron-up"></i></button>'+
       '<span class="pos-num" id="posNum-'+p.id+'">-</span>'+
@@ -1258,10 +1258,10 @@ function applySavedPanelStates(){
     var id=rawId.substring(6);
     var shouldCollapse;
     if(state.hasOwnProperty(id)){
-      /* User has explicitly toggled this panel before — respect that */
+      /* User has explicitly toggled this panel before - respect that */
       shouldCollapse=state[id]===true;
     }else{
-      /* No saved state — use the panel's defaultCollapsed flag */
+      /* No saved state - use the panel's defaultCollapsed flag */
       shouldCollapse=defaults[id]===true;
     }
     if(shouldCollapse){
@@ -1373,7 +1373,7 @@ function resetPanelOrder(){
   /* Rebuild panels in default order */
   buildPanels();
   bindCollapsibles();
-  /* Re-apply saved collapse/expand state — kept separate from panel ORDER so
+  /* Re-apply saved collapse/expand state - kept separate from panel ORDER so
      that resetting the order doesn't also wipe the user's collapse preferences. */
   applySavedPanelStates();
   updateDynamicTitles();
@@ -1497,7 +1497,7 @@ function copyText(elementId,btn){
 /* Screenshot (export) a panel to PNG via html2canvas.
    Strategy for adaptive width:
    1. Temporarily expand any collapsed sections inside the panel so all content is captured.
-   2. Measure the panel's "natural" content width — clone it, render off-screen at a wide
+   2. Measure the panel's "natural" content width - clone it, render off-screen at a wide
       width (1460px page max), measure scrollWidth. This gives the true content width
       without being constrained by the current grid column.
    3. Use the larger of (current panel width) and (natural content width), capped at 1460px.
@@ -1605,13 +1605,13 @@ function screenshotPanel(panelId,btn){
       var tzPart=tzParts.find(function(p){return p.type==='timeZoneName'});
       if(tzPart&&tzPart.value)tzShort=tzPart.value;
     }catch(e){/* fall back to EDT */}
-    /* Build the date/time string (without the timezone — we append tzShort separately) */
+    /* Build the date/time string (without the timezone - we append tzShort separately) */
     var stampStr=stampDate.toLocaleString('en-US',{
       timeZone:CONFIG.tz,
       weekday:'short',year:'numeric',month:'short',day:'numeric',
       hour:'2-digit',minute:'2-digit',hour12:true
     });
-    /* Build the logo element — use the configured logo URL with KN fallback */
+    /* Build the logo element - use the configured logo URL with KN fallback */
     var logoInner='<img src="'+CONFIG.logoUrl+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
     brandEl=document.createElement('div');
     brandEl.className='shot-brand';
@@ -1637,7 +1637,7 @@ function screenshotPanel(panelId,btn){
     icon.innerHTML='<i class="fas fa-external-link-alt" style="font-size:24px;color:var(--acc)"></i>';
     var label=document.createElement('div');
     label.style.cssText='font-size:11px;color:var(--t2);font-weight:600;text-align:center;padding:0 20px';
-    label.innerText='Interactive map/content — see live panel';
+    label.innerText='Interactive map/content - see live panel';
     var srcLabel=document.createElement('div');
     srcLabel.style.cssText='font-size:8px;color:var(--t3);font-family:JetBrains Mono,monospace;word-break:break-all;max-width:80%;text-align:center';
     srcLabel.innerText=ifr.src||ifr.getAttribute('src')||'';
@@ -1662,7 +1662,7 @@ function screenshotPanel(panelId,btn){
 
   function convertImageToDataUrl(img){
     return new Promise(function(resolve){
-      /* Set a 5-second timeout per image — if conversion takes too long,
+      /* Set a 5-second timeout per image - if conversion takes too long,
          skip it and let html2canvas try with the original src (useCORS). */
       var resolved=false;
       var timer=setTimeout(function(){if(!resolved){resolved=true;resolve()}},5000);
@@ -1688,7 +1688,7 @@ function screenshotPanel(panelId,btn){
               try{
                 var dataUrl='data:image/png;base64,'+btoa(data.contents);
                 img.setAttribute('data-original-src',img.src);img.src=dataUrl;
-              }catch(e){/* btoa fails on non-binary content — skip */}
+              }catch(e){/* btoa fails on non-binary content - skip */}
             }
             done();
           }).catch(function(){done()});
@@ -1756,7 +1756,7 @@ function showScreenshotPreview(dataUrl,title,panelId){
   var ts=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
   var filename='KN_'+panelId+'_'+ts+'.png';
   modal.innerHTML='<div class="sp-inner">'+
-    '<div class="sp-title"><i class="fas fa-camera"></i>'+title+' &mdash; Screenshot Preview</div>'+
+    '<div class="sp-title"><i class="fas fa-camera"></i>'+title+' - Screenshot Preview</div>'+
     '<img src="'+dataUrl+'" alt="Screenshot of '+title+'">'+
     '<div class="sp-actions">'+
       '<a class="sp-btn dl" href="'+dataUrl+'" download="'+filename+'"><i class="fas fa-download" style="margin-right:4px"></i>Download PNG</a>'+
@@ -1894,7 +1894,7 @@ function rTh(cu,h){
   var tp=cu.temperature_2m;
 
   /* ── SEVERE WEATHER ───────────────────────────────────────────────────────
-     Based on CAPE, Lifted Index, and wind gusts — NOT precipitation probability.
+     Based on CAPE, Lifted Index, and wind gusts - NOT precipitation probability.
      CAPE (J/kg): >3000=extreme, >2000=high, >1000=moderate, >500=slight
      Lifted Index (K): <-6=extreme, -6 to -4=strong, -4 to -2=moderate, >0=stable
      Wind gusts add to the severe potential. */
@@ -1984,7 +1984,7 @@ function rSPCImgs(day){
   var cb='_='+Date.now();
   grid.innerHTML=SPC_PRODUCTS.map(function(p){
     var u=url.spcImg(p.element,spcActDay);
-    return '<div class="spc-img-card"><div class="spc-img-h"><i class="fas '+p.icon+'"></i><span>'+p.title+'</span><span class="spc-src">NDFD</span></div><img src="'+u+'&'+cb+'" alt="'+p.title+'" loading="lazy" onerror="this.style.opacity=.3;this.nextElementSibling.style.display=\'block\'"><div class="spc-cap" style="display:none">Image unavailable — try refreshing</div><div class="spc-cap">'+p.cap+'</div></div>';
+    return '<div class="spc-img-card"><div class="spc-img-h"><i class="fas '+p.icon+'"></i><span>'+p.title+'</span><span class="spc-src">NDFD</span></div><img src="'+u+'&'+cb+'" alt="'+p.title+'" loading="lazy" onerror="this.style.opacity=.3;this.nextElementSibling.style.display=\'block\'"><div class="spc-cap" style="display:none">Image unavailable - try refreshing</div><div class="spc-cap">'+p.cap+'</div></div>';
   }).join('');
   mkUp('spc');
 }
@@ -1998,7 +1998,7 @@ function rRadar(key){
   if(!stage)return;
   if(v.type==='img'){
     var cb='_='+Date.now();
-    stage.innerHTML='<img src="'+v.url+'?'+cb+'" alt="'+v.label+'" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=radar-empty>Radar image temporarily unavailable — will retry on next refresh</div>\'">';
+    stage.innerHTML='<img src="'+v.url+'?'+cb+'" alt="'+v.label+'" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=radar-empty>Radar image temporarily unavailable - will retry on next refresh</div>\'">';
   }else if(v.type==='iframe'){
     stage.innerHTML='<iframe src="'+v.url+'" title="'+v.label+'" loading="lazy"></iframe>';
   }
@@ -2029,11 +2029,11 @@ function rHazards(){
    shows the location label, subtitle, and the latest snapshot with an
    onerror fallback if the camera is unavailable. */
 var ROAD_CAMS=[
-  {id:'internet_cam_100',label:'I-94 @ M-40',sub:'Paw Paw — Traffic nearest camera heading east'},
-  {id:'internet_cam_088',label:'I-94 @ M-140',sub:'Watervliet — Traffic nearest camera heading east'},
-  {id:'internet_cam_119',label:'I-196 @ Kalamazoo River',sub:'East Saugatuck — Median camera'},
-  {id:'internet_cam_206',label:'I-196 @ N of 142nd Ave',sub:'Laketown — Median camera'},
-  {id:'internet_cam_208',label:'I-196 @ M-40',sub:'Holland — Traffic nearest camera heading east'},
+  {id:'internet_cam_100',label:'I-94 @ M-40',sub:'Paw Paw - Traffic nearest camera heading east'},
+  {id:'internet_cam_088',label:'I-94 @ M-140',sub:'Watervliet - Traffic nearest camera heading east'},
+  {id:'internet_cam_119',label:'I-196 @ Kalamazoo River',sub:'East Saugatuck - Median camera'},
+  {id:'internet_cam_206',label:'I-196 @ N of 142nd Ave',sub:'Laketown - Median camera'},
+  {id:'internet_cam_208',label:'I-196 @ M-40',sub:'Holland - Traffic nearest camera heading east'},
   {id:'internet_cam_030',label:'I-94 @ US-131',sub:'Portage'},
   {id:'internet_cam_210',label:'US-131 @ M-89',sub:'Plainwell'}
 ];
@@ -2055,7 +2055,7 @@ function rRoadCams(){
   mkUp('rc');
 }
 
-/* ── GFS Forecasted SkewT Models (NCEP NAM/GFS) — tabbed by model ───────────
+/* ── GFS Forecasted SkewT Models (NCEP NAM/GFS) - tabbed by model ───────────
    Displays forecast sounding plots from NCEP's model sounding archive.
    The panel is organized as:
      [Model tabs] → [Station tabs] → [Hour tabs with filter checkboxes + Play/Pause/Stop]
@@ -2094,7 +2094,7 @@ var sndActHour=0;        /* current forecast hour value */
 var sndPlayState='stopped';  /* 'stopped' | 'playing' | 'paused' */
 var sndPlayTimer=null;   /* timeout ID for playback */
 var sndPlaySpeed=1500;   /* ms per frame */
-var sndFilterHours={};   /* {hourValue: true/false} — which hours to include in playback */
+var sndFilterHours={};   /* {hourValue: true/false} - which hours to include in playback */
 /* Initialize all hours as selected (included in playback) */
 SND_MODELS.forEach(function(m){m.hours.forEach(function(h){sndFilterHours[h]=true})});
 
@@ -2184,9 +2184,9 @@ function playSnd(){
   if(sndPlayState==='playing')return;
   /* If paused, resume from current position */
   if(sndPlayState==='paused'){sndPlayState='playing';scheduleSndFrame();updateSndPlayButtons();return}
-  /* Start fresh — find the first filtered hour after the current one, or the first */
+  /* Start fresh - find the first filtered hour after the current one, or the first */
   var hours=sndFilteredHours();
-  if(!hours.length){showToast('No hours selected — use the checkboxes to select hours to cycle',true);return}
+  if(!hours.length){showToast('No hours selected - use the checkboxes to select hours to cycle',true);return}
   sndPlayState='playing';
   scheduleSndFrame();
   updateSndPlayButtons();
@@ -2220,7 +2220,7 @@ function stopSndPlayback(){
   if(sndPlayTimer){clearTimeout(sndPlayTimer);sndPlayTimer=null}
   updateSndPlayButtons();
 }
-/* Manual navigation — step to the previous/next filtered hour.
+/* Manual navigation - step to the previous/next filtered hour.
    These respect the hour filter (only checked hours are visited).
    If playback is running, it continues from the new position. */
 function sndPrev(){
@@ -2292,11 +2292,11 @@ function rSkewT(){
    URL format: https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR=YYYY&MONTH=MM&FROM=DDHH&TO=DDHH&STNM=NNNNN
    Soundings are available at 00Z and 12Z. We try the most recent, then fall back. */
 var STORM_ENV_STATIONS=[
-  {stnm:'72632',label:'DTX — White Lake, MI',sub:'SW Michigan'},
-  {stnm:'74455',label:'DVN — Davenport, IA',sub:'Upstream MCS'},
-  {stnm:'74560',label:'ILX — Lincoln, IL',sub:'IL→IN→MI track'},
-  {stnm:'72634',label:'APX — Gaylord, MI',sub:'Northern tier'},
-  {stnm:'72649',label:'MPX — Minneapolis, MN',sub:'MN→WI→MI'}
+  {stnm:'72632',label:'DTX - White Lake, MI',sub:'SW Michigan'},
+  {stnm:'74455',label:'DVN - Davenport, IA',sub:'Upstream MCS'},
+  {stnm:'74560',label:'ILX - Lincoln, IL',sub:'IL→IN→MI track'},
+  {stnm:'72634',label:'APX - Gaylord, MI',sub:'Northern tier'},
+  {stnm:'72649',label:'MPX - Minneapolis, MN',sub:'MN→WI→MI'}
 ];
 var senvActStation=0;
 var senvCache={};
@@ -2338,7 +2338,7 @@ function latestSoundingTime(){
     /* 00Z sounding is available */
     sndHour=0;
   }else{
-    /* Before 02Z — use yesterday's 12Z */
+    /* Before 02Z - use yesterday's 12Z */
     sndHour=12;
     var yest=new Date(Date.UTC(utcY,utcM-1,utcD-1));
     sndDay=yest.getUTCDate();
@@ -2526,7 +2526,7 @@ var alertMapInstance=null;
 var alertMapLayers={warnings:[],watches:[],advisories:[],counties:null,countyLabels:[],radarRefl:null,radarVel:null};
 var COUNTY_GEOJSON=null;
 
-/* NWS alert color logic — matches the official NWS Hazards Map color codes.
+/* NWS alert color logic - matches the official NWS Hazards Map color codes.
    Source: https://www.weather.gov/help-map (March 10, 2025 update) */
 function getAlertColor(event){
   if(!event)return '#cccccc';
@@ -2697,11 +2697,11 @@ function initAlertMap(){
   }
 }
 
-/* Tri-County GeoJSON — actual NWS county boundary polygons for Allegan, Kalamazoo, and Van Buren counties.
+/* Tri-County GeoJSON - actual NWS county boundary polygons for Allegan, Kalamazoo, and Van Buren counties.
    Source: api.weather.gov/zones/county (MIC005, MIC077, MIC159) */
 var TRI_COUNTY_GEOJSON={"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Allegan County","zone":"MIC005","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-86.000099,42.769012],[-85.965393,42.76881],[-85.890793,42.767513],[-85.841309,42.767513],[-85.782494,42.76812],[-85.732399,42.768311],[-85.676399,42.768211],[-85.663795,42.768013],[-85.627693,42.768211],[-85.553398,42.768013],[-85.545395,42.768112],[-85.545494,42.740711],[-85.545097,42.703213],[-85.545097,42.681511],[-85.544495,42.660213],[-85.544197,42.638313],[-85.5439,42.631111],[-85.5438,42.609314],[-85.543495,42.598713],[-85.543098,42.591213],[-85.542999,42.522511],[-85.543297,42.508911],[-85.543198,42.491013],[-85.543396,42.483513],[-85.543495,42.466011],[-85.543495,42.44791],[-85.543198,42.42131],[-85.548195,42.421112],[-85.607193,42.420712],[-85.616997,42.420712],[-85.626099,42.421112],[-85.676094,42.420914],[-85.682396,42.420914],[-85.685898,42.421112],[-85.6894,42.420914],[-85.702599,42.420914],[-85.7155,42.421112],[-85.721695,42.420914],[-85.7491,42.421013],[-85.761299,42.420712],[-85.764496,42.420414],[-85.766998,42.420712],[-85.836998,42.420414],[-85.896797,42.419712],[-85.906593,42.419411],[-85.909996,42.419514],[-85.938095,42.419113],[-85.993393,42.418812],[-86.009499,42.418812],[-86.012299,42.419014],[-86.022194,42.419113],[-86.030396,42.418911],[-86.048393,42.418812],[-86.1017,42.418812],[-86.129295,42.419212],[-86.168396,42.419113],[-86.240898,42.419514],[-86.255997,42.419312],[-86.271896,42.419312],[-86.273994,42.419113],[-86.273323,42.420956],[-86.272186,42.422829],[-86.271252,42.425096],[-86.26915,42.428478],[-86.267202,42.432459],[-86.266922,42.433327],[-86.26448,42.437787],[-86.264264,42.438725],[-86.262192,42.442211],[-86.260674,42.446571],[-86.259094,42.449955],[-86.256683,42.456448],[-86.25631,42.458622],[-86.25521,42.46164],[-86.254296,42.465621],[-86.253517,42.467541],[-86.251816,42.473145],[-86.251692,42.47399],[-86.251135,42.47534],[-86.250638,42.477627],[-86.250031,42.479046],[-86.250031,42.480189],[-86.24971,42.480212],[-86.249519,42.481746],[-86.24915,42.482637],[-86.248657,42.485107],[-86.247208,42.490166],[-86.246445,42.499474],[-86.246016,42.500838],[-86.245491,42.504543],[-86.245495,42.505574],[-86.24485,42.509165],[-86.244606,42.511979],[-86.244824,42.513717],[-86.244789,42.514496],[-86.244453,42.515823],[-86.244514,42.517925],[-86.243835,42.519436],[-86.242361,42.526345],[-86.24227,42.527992],[-86.24153,42.5314],[-86.241254,42.533482],[-86.241257,42.536113],[-86.240547,42.540779],[-86.239685,42.544048],[-86.239348,42.546063],[-86.237836,42.55057],[-86.237098,42.55654],[-86.235771,42.561825],[-86.23528,42.564958],[-86.234631,42.566994],[-86.234601,42.568161],[-86.233673,42.569695],[-86.231293,42.575527],[-86.229719,42.578593],[-86.228081,42.583397],[-86.226997,42.587288],[-86.226539,42.589573],[-86.225983,42.59346],[-86.225613,42.594765],[-86.225645,42.596778],[-86.225987,42.599569],[-86.226051,42.601673],[-86.22692,42.606087],[-86.226952,42.607506],[-86.227729,42.611737],[-86.227979,42.61455],[-86.228256,42.615692],[-86.2286,42.61869],[-86.228264,42.623997],[-86.228453,42.626532],[-86.229293,42.63202],[-86.229385,42.633461],[-86.229324,42.635906],[-86.22905,42.637691],[-86.228119,42.641399],[-86.226639,42.644921],[-86.224037,42.649887],[-86.220169,42.655788],[-86.218063,42.659403],[-86.216019,42.664413],[-86.215614,42.666538],[-86.214317,42.670109],[-86.21376,42.672329],[-86.213546,42.674341],[-86.21376,42.677063],[-86.213173,42.678574],[-86.211624,42.681042],[-86.211037,42.683102],[-86.210171,42.685069],[-86.210171,42.686097],[-86.209645,42.687653],[-86.209614,42.688796],[-86.208654,42.69209],[-86.208344,42.694859],[-86.20797,42.696323],[-86.207848,42.699295],[-86.207321,42.700943],[-86.207047,42.707302],[-86.206703,42.709702],[-86.206985,42.711578],[-86.206894,42.713661],[-86.207047,42.717571],[-86.206833,42.719425],[-86.206929,42.724525],[-86.207395,42.726698],[-86.207272,42.729191],[-86.207489,42.739231],[-86.207463,42.747214],[-86.207806,42.748037],[-86.20793,42.749501],[-86.208397,42.751877],[-86.208397,42.754692],[-86.208183,42.756476],[-86.208305,42.762791],[-86.208807,42.765511],[-86.20921,42.766426],[-86.209211,42.767578],[-86.208855,42.767582],[-86.208694,42.767212],[-86.205498,42.767612],[-86.172798,42.768211],[-86.153793,42.768414],[-86.115723,42.768494],[-86.105125,42.768677],[-86.083618,42.768677],[-86.0811,42.768814],[-86.049095,42.769012],[-86.000099,42.769012]]]}},{"type":"Feature","properties":{"name":"Kalamazoo County","zone":"MIC077","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-85.5,42.421413],[-85.425194,42.420013],[-85.4123,42.41991],[-85.299896,42.419514],[-85.299194,42.405613],[-85.298393,42.375614],[-85.298393,42.370411],[-85.297997,42.359013],[-85.298096,42.355713],[-85.297798,42.347713],[-85.297394,42.319012],[-85.296997,42.303211],[-85.297096,42.275414],[-85.296799,42.267612],[-85.296997,42.250011],[-85.296898,42.238411],[-85.294899,42.136913],[-85.294197,42.11581],[-85.2939,42.086113],[-85.293594,42.074413],[-85.293297,42.071411],[-85.303497,42.071514],[-85.363396,42.071312],[-85.375,42.071411],[-85.405296,42.071213],[-85.473,42.071114],[-85.516899,42.070911],[-85.602295,42.070213],[-85.624397,42.070412],[-85.743095,42.069611],[-85.760895,42.069412],[-85.762695,42.069012],[-85.762993,42.075813],[-85.763298,42.09111],[-85.763794,42.126114],[-85.764496,42.157013],[-85.765297,42.208012],[-85.766098,42.240913],[-85.766197,42.255013],[-85.7659,42.308613],[-85.765594,42.318314],[-85.765297,42.342911],[-85.765297,42.368813],[-85.764999,42.381813],[-85.764297,42.401314],[-85.764496,42.420414],[-85.761299,42.420712],[-85.7491,42.421013],[-85.721695,42.420914],[-85.7155,42.421112],[-85.702599,42.420914],[-85.6894,42.420914],[-85.685898,42.421112],[-85.682396,42.420914],[-85.676094,42.420914],[-85.626099,42.421112],[-85.616997,42.420712],[-85.607193,42.420712],[-85.548195,42.421112],[-85.543198,42.42131],[-85.524895,42.421211],[-85.5,42.421413]]]}},{"type":"Feature","properties":{"name":"Van Buren County","zone":"MIC159","state":"MI"},"geometry":{"type":"Polygon","coordinates":[[[-85.764297,42.401314],[-85.764999,42.381813],[-85.765297,42.368813],[-85.765297,42.342911],[-85.765594,42.318314],[-85.7659,42.308613],[-85.766197,42.255013],[-85.766098,42.240913],[-85.765297,42.208012],[-85.764496,42.157013],[-85.763794,42.126114],[-85.763298,42.09111],[-85.762993,42.075813],[-85.762695,42.069012],[-85.764595,42.069412],[-85.864494,42.069214],[-85.959694,42.069611],[-85.991798,42.069912],[-86.011299,42.070313],[-86.021599,42.070114],[-86.098198,42.070713],[-86.1147,42.071011],[-86.161095,42.071011],[-86.184395,42.071312],[-86.223,42.07151],[-86.222893,42.086014],[-86.223,42.095913],[-86.222794,42.109612],[-86.222893,42.157211],[-86.223595,42.243412],[-86.249794,42.24361],[-86.301796,42.24361],[-86.338799,42.243111],[-86.352898,42.243111],[-86.362396,42.242813],[-86.364655,42.243221],[-86.35923,42.250034],[-86.35434,42.256958],[-86.353153,42.259065],[-86.351418,42.261581],[-86.346771,42.269016],[-86.345757,42.271118],[-86.344154,42.273544],[-86.341635,42.278052],[-86.339972,42.280408],[-86.338095,42.283703],[-86.336121,42.286358],[-86.334554,42.289445],[-86.332799,42.292168],[-86.331466,42.29486],[-86.329781,42.297359],[-86.329193,42.298733],[-86.327621,42.300632],[-86.327286,42.301753],[-86.325345,42.304612],[-86.322912,42.309073],[-86.3218,42.310741],[-86.320724,42.313625],[-86.320198,42.314678],[-86.319708,42.314883],[-86.318722,42.317491],[-86.317921,42.318749],[-86.317397,42.320282],[-86.315887,42.322798],[-86.315825,42.323553],[-86.314099,42.32568],[-86.313667,42.32703],[-86.312096,42.330094],[-86.305836,42.341257],[-86.304848,42.343269],[-86.304602,42.344162],[-86.303555,42.345809],[-86.301735,42.349239],[-86.300747,42.351573],[-86.299202,42.353973],[-86.298865,42.355004],[-86.298094,42.356674],[-86.297165,42.358208],[-86.296425,42.360126],[-86.296088,42.361249],[-86.295654,42.364361],[-86.294914,42.36562],[-86.294296,42.367928],[-86.293861,42.368958],[-86.293861,42.36953],[-86.293371,42.370603],[-86.29303,42.373165],[-86.292044,42.375624],[-86.290717,42.380062],[-86.290253,42.381115],[-86.287842,42.384804],[-86.287628,42.386169],[-86.286919,42.387473],[-86.286919,42.387793],[-86.286024,42.389074],[-86.285248,42.392345],[-86.284447,42.394562],[-86.284169,42.396576],[-86.283798,42.397925],[-86.284229,42.400006],[-86.284969,42.401814],[-86.284043,42.402431],[-86.283487,42.403208],[-86.282928,42.404465],[-86.281211,42.406422],[-86.280615,42.407554],[-86.277245,42.412495],[-86.276505,42.414551],[-86.275549,42.415993],[-86.273994,42.419113],[-86.271896,42.419312],[-86.255997,42.419312],[-86.240898,42.419514],[-86.168396,42.419113],[-86.129295,42.419212],[-86.1017,42.418812],[-86.048393,42.418812],[-86.030396,42.418911],[-86.022194,42.419113],[-86.012299,42.419014],[-86.009499,42.418812],[-85.993393,42.418812],[-85.938095,42.419113],[-85.909996,42.419514],[-85.906593,42.419411],[-85.896797,42.419712],[-85.836998,42.420414],[-85.766998,42.420712],[-85.764496,42.420414],[-85.764297,42.401314]]]}}]};
 
-/* Zone geometry cache — avoids re-fetching the same NWS zone polygon on every
+/* Zone geometry cache - avoids re-fetching the same NWS zone polygon on every
    refresh. Keyed by UGC code (e.g. 'MIZ071', 'MIC159', 'LMZ846'). Persisted for
    the lifetime of the page since zone boundaries rarely change. */
 var ZONE_GEOMETRY_CACHE={};
@@ -2768,7 +2768,7 @@ function alertUgcs(alert){
   return ugcs;
 }
 
-/* Tri-County UGC codes — used by the "Tri-County Focus" filter.
+/* Tri-County UGC codes - used by the "Tri-County Focus" filter.
    Includes both forecast zones (MIZ###) and county zones (MIC###) for the
    three monitored counties: Van Buren, Allegan, Kalamazoo. */
 var FOCUS_UGCS={'MIZ064':1,'MIZ071':1,'MIZ072':1,'MIC005':1,'MIC077':1,'MIC159':1};
@@ -2780,7 +2780,7 @@ var FOCUS_UGCS={'MIZ064':1,'MIZ071':1,'MIZ072':1,'MIC005':1,'MIC077':1,'MIC159':
 var RADAR_STATION_BOUNDS={
   /* Coverage bounds for each radar station, tightened to match the actual
      radar data area in the NWS RIDGE GIF images. The GIFs are square images
-     but the radar data only fills a circle within the square — the corners
+     but the radar data only fills a circle within the square - the corners
      are transparent/empty. These bounds crop ~15% from each edge to avoid
      the radar image extending past the actual geographic features.
      KGRR: radar at 42.89°N, -85.52°W, ~230km range
@@ -2894,7 +2894,7 @@ async function fAlertMap(){
       if(cat==='watches'&&showWatches&&showWatches.checked)showLayer=true;
       if(cat==='advisories'&&showAdvisories&&showAdvisories.checked)showLayer=true;
       if(!showLayer)return;
-      /* Tri-County Focus filter — keep alert only if it references one of our UGC codes
+      /* Tri-County Focus filter - keep alert only if it references one of our UGC codes
          OR has an inline geometry that intersects our area (we can't cheaply test
          intersection, so for inline-geometry alerts we keep them as-is). */
       if(focusMode&&!alert.geometry){
@@ -2927,7 +2927,7 @@ async function fAlertMap(){
         geoms.push(alert.geometry);
       }else{
         var ugcs=alertUgcs(alert);
-        /* Fetch all zone geometries in parallel — much faster than sequential
+        /* Fetch all zone geometries in parallel - much faster than sequential
            await on first load when an alert references 5+ zones. Cached results
            return instantly so subsequent refreshes are unaffected. */
         var results=await Promise.all(ugcs.map(function(u){return getZoneGeometry(u)}));
@@ -2935,7 +2935,7 @@ async function fAlertMap(){
       }
 
       if(geoms.length===0){
-        /* No geometry resolvable — count it but skip drawing. */
+        /* No geometry resolvable - count it but skip drawing. */
         undrawn++;
         if(cat==='warnings')warnCount++;
         else if(cat==='watches')watchCount++;
@@ -2962,7 +2962,7 @@ async function fAlertMap(){
       countEl.textContent=label;
     }
     /* Bring Tri-County borders and labels to the front so they always render
-       on top of the alert shading — keeps the monitored area instantly
+       on top of the alert shading - keeps the monitored area instantly
        locatable even when a warning/watch is filling the same polygon. */
     if(alertMapLayers.counties&&typeof alertMapLayers.counties.bringToFront==='function'){
       alertMapLayers.counties.bringToFront();
@@ -3157,7 +3157,7 @@ function renderWwasContent(){
     var textId='wwasText-'+idx;
     /* Truncate description for display (first ~800 chars) */
     var desc=p.description||'';
-    if(desc.length>800)desc=desc.substring(0,800)+'\n\n... [truncated — see full alert at NWS]';
+    if(desc.length>800)desc=desc.substring(0,800)+'\n\n... [truncated - see full alert at NWS]';
     html+='<div class="wwas-item" id="wwasItem-'+idx+'" style="border-left-color:'+tagInfo.color+'">'+
       '<textarea id="'+textId+'" style="display:none">'+fullText.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea>'+
       '<div class="wwas-item-head">'+
@@ -3246,7 +3246,7 @@ function screenshotWWasItem(idx){
     if(actions)actions.style.display='';
     if(brandEl.parentNode)brandEl.parentNode.removeChild(brandEl);
     var dataUrl=canvas.toDataURL('image/png');
-    showScreenshotPreview(dataUrl,title+' — WWA Alert',filename);
+    showScreenshotPreview(dataUrl,title+' - WWA Alert',filename);
   }).catch(function(err){
     console.error('WWA screenshot error:',err);
     if(desc){desc.style.maxHeight=origMaxH;desc.style.overflow=''}
@@ -3569,14 +3569,14 @@ function rWWALegend(){
   if(!grid)return;
   var html='';
   WWA_LEGEND.forEach(function(cat){
-    /* Collapsible category header — click to expand/collapse the items below.
+    /* Collapsible category header - click to expand/collapse the items below.
        Starts expanded. The chevron rotates when collapsed. */
     html+='<div class="wwa-legend-cat" onclick="this.classList.toggle(\'collapsed\')">'+
       '<i class="fas fa-chevron-down cat-icon"></i>'+
       '<span class="cat-name">'+cat.cat+'</span>'+
       '<span class="cat-count">'+cat.items.length+'</span>'+
       '</div>';
-    /* Category body — hidden when the header has the 'collapsed' class */
+    /* Category body - hidden when the header has the 'collapsed' class */
     html+='<div class="wwa-legend-cat-body"><div class="wwa-legend-grid">';
     cat.items.forEach(function(item){
       html+='<div class="wwa-legend-item">'+
@@ -3599,7 +3599,7 @@ function rMeteo(){
   var mUrl=url.meteo(loc);
   var sep=mUrl.indexOf('?')===-1?'?':'&';
   img.src=mUrl+sep+'_='+Date.now();
-  if(cap)cap.textContent='48-hour meteogram — NWS '+CONFIG.nwsOffice+' (temperature, dew point, wind, precipitation, sky cover)';
+  if(cap)cap.textContent='48-hour meteogram - NWS '+CONFIG.nwsOffice+' (temperature, dew point, wind, precipitation, sky cover)';
   if(pt)pt.textContent=loc.point||loc.label;
   mkUp('meteo');
 }
@@ -3909,7 +3909,7 @@ async function fDWML(){
       }
     }
 
-    /* 2. Forecast text (wordedForecast) — pair each text block with its period name
+    /* 2. Forecast text (wordedForecast) - pair each text block with its period name
        from the time-layout. The wordedForecast text blocks don't include the period
        name; the period names live in the <start-valid-time period-name="..."> elements
        of the k-p12h-n13-1 time-layout (13 12-hour periods). */
@@ -4039,7 +4039,7 @@ function parseSpcDescription(descText){
   if(cdataStart>0){
     result.summary=descText.substring(0,cdataStart).trim();
   }else if(cdataStart<0){
-    /* No HTML at all — the whole thing is the summary */
+    /* No HTML at all - the whole thing is the summary */
     result.summary=descText.trim();
     return result;
   }
@@ -4063,7 +4063,7 @@ function parseSpcDescription(descText){
       ps.forEach(function(p){var t=(p.innerText||p.textContent||'').trim();if(t)pTexts.push(t)});
       result.fullText=pTexts.join('\n\n');
     }
-  }catch(e){/* parsing failed — keep whatever we have */}
+  }catch(e){/* parsing failed - keep whatever we have */}
   return result;
 }
 
@@ -4087,7 +4087,7 @@ function rSPCR(id){
       /* Escape HTML in the text to prevent injection, then limit length for display */
       var escText=it.fullText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       /* Cap at ~2000 chars to keep the panel readable; the full text is available via the link */
-      if(escText.length>2000)escText=escText.substring(0,2000)+'\n\n... [truncated — click link below for full text]';
+      if(escText.length>2000)escText=escText.substring(0,2000)+'\n\n... [truncated - click link below for full text]';
       textBlock='<div class="spc-rss-text">'+escText+'</div>';
     }
     /* Build the body layout: image on left, text on right (single column if only one is present) */
@@ -4224,7 +4224,7 @@ async function fAv(sid){
   avCache[sid]={metars:[],taf:null,obsDone:false,tafDone:false};
 
   /* 1. Fetch observations from NWS API (CORS-friendly, fast).
-     Render immediately when done — don't wait for the TAF fetch. */
+     Render immediately when done - don't wait for the TAF fetch. */
   (async function(){
     try{
       var r=await Promise.race([
@@ -4283,7 +4283,7 @@ async function fAv(sid){
     if(sid===avAct)rAvSt(sid);
   })();
 
-  /* Return immediately — the cache object will be populated asynchronously.
+  /* Return immediately - the cache object will be populated asynchronously.
      Callers that await fAv get the cache object right away; rAvSt is called
      when each fetch completes to update the display incrementally. */
   return avCache[sid];
@@ -4292,14 +4292,14 @@ function rAvSt(id){
   var d=avCache[id]||{metars:[],taf:null,obsDone:false,tafDone:false};
   /* Only render the METAR chart if we have data OR if the observation fetch
      has completed (even if it failed). Don't call rMCh with empty metars while
-     still loading, because rMCh replaces the canvas with a text message —
+     still loading, because rMCh replaces the canvas with a text message -
      which destroys the canvas element so subsequent calls can't find it. */
   if(d.metars.length>0){
     rMCh(d.metars);
     /* Also render the raw METAR text + decoded grid (rRM calls rDec internally) */
     rRM(d.metars);
   }else if(d.obsDone){
-    /* Observation fetch completed but no data — show "no data" message.
+    /* Observation fetch completed but no data - show "no data" message.
        But only destroy the canvas if it still exists. */
     var canvas=document.getElementById('mCh');
     if(canvas&&canvas.parentElement){
@@ -4396,7 +4396,7 @@ async function fLocalObs(){
         var utcDay=parseInt(timeMatch[1],10);
         var utcHr=parseInt(timeMatch[2],10);
         var utcMin=parseInt(timeMatch[3],10);
-        /* Build a Date in UTC — use the current year/month, but the day from the METAR.
+        /* Build a Date in UTC - use the current year/month, but the day from the METAR.
            If the METAR day is greater than today's UTC day, it's from last month. */
         var obsDate=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),utcDay,utcHr,utcMin,0));
         /* If the computed date is more than 1 day in the future, it's from last month */
@@ -4542,9 +4542,9 @@ async function init(){
 /* ── Facebook SDK integration ────────────────────────────────────────────────
    The fb-page element is built dynamically by buildPanels(), so the SDK can't
    auto-discover it on load. We use two mechanisms:
-   1. fbAsyncInit — fires when the SDK loads; calls FB.XFBML.parse() to render
+   1. fbAsyncInit - fires when the SDK loads; calls FB.XFBML.parse() to render
       any fb-page elements that exist at that point.
-   2. parseFacebookPlugin() — called from init() after panels are built. If the
+   2. parseFacebookPlugin() - called from init() after panels are built. If the
       SDK isn't ready yet, it retries every 1.5s until it is. */
 window.fbAsyncInit=function(){
   FB.init({
@@ -4559,7 +4559,7 @@ function parseFacebookPlugin(){
   if(typeof FB!=='undefined'&&FB.XFBML){
     try{FB.XFBML.parse()}catch(e){console.warn('FB parse error:',e)}
   }else{
-    /* SDK not ready yet — retry in 1.5 seconds */
+    /* SDK not ready yet - retry in 1.5 seconds */
     setTimeout(parseFacebookPlugin,1500);
   }
 }
@@ -4576,20 +4576,20 @@ init();
    3. A registered service worker with a fetch handler.
 
    The manifest is generated as a Blob URL from CONFIG values (data-driven).
-   The service worker is loaded from ./sw.js — you must place the sw.js file
+   The service worker is loaded from ./sw.js - you must place the sw.js file
    (provided alongside this HTML) in the same directory. */
 
 /* 1. Generate the manifest from CONFIG and apply it to the <link rel="manifest"> tag */
 function initPWA(){
   /* Use the bundled PNG icon (1024x1024 profile_picture.png) for all PWA icon
-     sizes — browsers will downscale as needed. PNG is preferred over SVG for
+     sizes - browsers will downscale as needed. PNG is preferred over SVG for
      PWA install icons because it renders consistently across Android, Chrome
      OS, and iOS home screens. */
   var iconUrl='./profile_picture.png';
   var manifest={
     name:CONFIG.siteName,
     short_name:CONFIG.siteName.replace(/[^A-Z]/g,'').slice(0,2)+' Weather',
-    description:CONFIG.siteSubtitle.replace(/\u2014/g,'-'),
+    description:CONFIG.siteSubtitle,
     start_url:'./',
     scope:'./',
     display:'standalone',
@@ -4612,12 +4612,12 @@ function initPWA(){
   /* 2. Register the service worker (from ./sw.js in the same directory).
      This enables offline caching and makes the page installable as an app.
      The registration only works when served over HTTPS or http://localhost.
-     It silently fails on file:// — which is expected. */
+     It silently fails on file:// - which is expected. */
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(function(reg){
       console.log('PWA: Service worker registered (scope: '+reg.scope+')');
     }).catch(function(err){
-      console.warn('PWA: Service worker registration failed — ensure sw.js is in the same directory and the page is served over HTTPS:',err.message);
+      console.warn('PWA: Service worker registration failed - ensure sw.js is in the same directory and the page is served over HTTPS:',err.message);
     });
   }
 }
@@ -4628,7 +4628,7 @@ if(document.readyState==='loading'){
   initPWA();
 }
 </script>
-<!-- Facebook SDK — loads asynchronously. fbAsyncInit (defined above) fires when ready. -->
+<!-- Facebook SDK - loads asynchronously. fbAsyncInit (defined above) fires when ready. -->
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js" nonce="knwx"></script>
 </body>
 </html>
