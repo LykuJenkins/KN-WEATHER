@@ -14,7 +14,7 @@
 <meta name="description" content="KN Weather Center — Storm Operations, Kalamazoo, MI">
 <!-- Inline SVG favicon (purple circle with KN) as a data URI -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23a855f6'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-size='44' font-weight='bold' fill='white' text-anchor='middle'%3EKN%3C/text%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23a855f6'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-size='44' font-weight='bold' fill='white' text-anchor='middle'%3EKN%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="./profile_picture.png">
 <!-- Web app manifest — generated at runtime by the PWA init script below -->
 <link rel="manifest" id="manifestLink">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -605,7 +605,7 @@ body.capturing .wwas-item-actions{display:none!important}
 var CONFIG={
   siteName:'KN Weather Center',
   siteSubtitle:'Storm Operations \u2014 Kalamazoo, MI',
-  logoUrl:'https://z-cdn-media.chatglm.cn/files/abfac3db-c74d-47ec-bb40-a862415d17c4.png?auth_key=1881897098-ef4b6fa47fa74115a2b3201ec1196d13-0-605ae5bf7e49b6082e092a5f18056ceb',
+  logoUrl:'./profile_picture.png',
   tz:'America/New_York',
   nwsOffice:'GRR',              /* NWS forecast office (used in URLs) */
   nwsOfficeLower:'grr',          /* lowercase (for hazard-map iframe) */
@@ -4512,16 +4512,11 @@ init();
 
 /* 1. Generate the manifest from CONFIG and apply it to the <link rel="manifest"> tag */
 function initPWA(){
-  /* Build an SVG icon as a data URI (purple circle with "KN" text).
-     This is used for all icon sizes since we don't have separate PNG files.
-     For production, replace with actual 192px and 512px PNG icons. */
-  var iconSvg="data:image/svg+xml,"+encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'+
-    '<rect width="512" height="512" rx="96" fill="#0e0e15"/>'+
-    '<circle cx="256" cy="256" r="200" fill="#a855f6"/>'+
-    '<text x="256" y="340" font-family="Arial,sans-serif" font-size="220" font-weight="bold" fill="white" text-anchor="middle">KN</text>'+
-    '</svg>'
-  );
+  /* Use the bundled PNG icon (1024x1024 profile_picture.png) for all PWA icon
+     sizes — browsers will downscale as needed. PNG is preferred over SVG for
+     PWA install icons because it renders consistently across Android, Chrome
+     OS, and iOS home screens. */
+  var iconUrl='./profile_picture.png';
   var manifest={
     name:CONFIG.siteName,
     short_name:CONFIG.siteName.replace(/[^A-Z]/g,'').slice(0,2)+' Weather',
@@ -4534,8 +4529,9 @@ function initPWA(){
     theme_color:'#0e0e15',
     categories:['weather','news'],
     icons:[
-      {src:iconSvg,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
-      {src:iconSvg,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}
+      {src:iconUrl,sizes:'192x192',type:'image/png',purpose:'any maskable'},
+      {src:iconUrl,sizes:'512x512',type:'image/png',purpose:'any maskable'},
+      {src:iconUrl,sizes:'1024x1024',type:'image/png',purpose:'any maskable'}
     ]
   };
   /* Create a Blob from the manifest JSON and set it as the manifest link href */
