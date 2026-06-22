@@ -790,7 +790,14 @@ var PANELS=[
     updateId:'upd-fc',refreshFn:'fWx',collapsible:true,
     body:'<div class="fl2" id="fcL"></div>'
   },
-  /* 4. WWA Map (Warnings, Watches, Advisories) */
+  /* 4. Threats (moved here from slot 7 so it sits with the top at-a-glance panels) */
+  {
+    id:'threats',title:'Threats',icon:'fa-gauge-high',
+    badge:null,badgeClass:null,gridClass:'g2',
+    updateId:'upd-thr',refreshFn:'fWx',collapsible:true,
+    body:'<div class="tl" id="thL"></div>'
+  },
+  /* 4a. WWA Map (Warnings, Watches, Advisories) */
   {
     id:'wwa',title:'WWA Map',icon:'fa-triangle-exclamation',
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
@@ -801,7 +808,7 @@ var PANELS=[
   {
     id:'wwaLegend',title:'WWA Map Color Code',icon:'fa-palette',
     badge:'Legend',badgeClass:'cb-l',gridClass:'gf',
-    updateId:null,refreshFn:null,collapsible:true,
+    updateId:null,refreshFn:null,collapsible:true,defaultCollapsed:true,
     body:'<div id="wwaLegendGrid"></div>'
   },
   /* 4c. Alert Polygon Map (Leaflet + NWS alerts) */
@@ -832,14 +839,7 @@ var PANELS=[
     updateId:'upd-meteo',refreshFn:'rMeteo',collapsible:true,
     body:'<div class="meteo-wrap"><div class="meteo-point" id="meteoPt">Loading point forecast...</div><div class="img-stage"><img id="meteoImg" src="" alt="48-hour Hourly Forecast Graph (meteogram)" loading="lazy" onerror="this.style.opacity=.3;var c=document.getElementById(\'meteoCap\');if(c){c.style.display=\'block\';c.textContent=\'Meteogram image temporarily unavailable\'}"><div class="img-cap" id="meteoCap">Loading meteogram...</div></div></div>'
   },
-  /* 7. Threats */
-  {
-    id:'threats',title:'Threats',icon:'fa-gauge-high',
-    badge:null,badgeClass:null,gridClass:'g2',
-    updateId:'upd-thr',refreshFn:'fWx',collapsible:true,
-    body:'<div class="tl" id="thL"></div>'
-  },
-  /* 8. Forecast Discussion (AFD) */
+  /* 7. Forecast Discussion (AFD) */
   {
     id:'afd',title:'Forecast Discussion',icon:'fa-pen-fancy',
     badge:null,badgeClass:null,gridClass:'gf',
@@ -1209,8 +1209,66 @@ function bindCollapsibles(){
   document.querySelectorAll('.collapse-toggle').forEach(function(t){
     t.addEventListener('click',function(){
       var parent=t.closest('.collapsible');
-      if(parent)parent.classList.toggle('collapsed');
+      if(parent){
+        parent.classList.toggle('collapsed');
+        /* Persist the new state so it survives refresh/revisit */
+        savePanelState(parent);
+      }
     });
+  });
+}
+
+/* Persist a single panel's collapse state to localStorage.
+   Reads the panel id from the element's id attribute (format: panel-<id>). */
+function savePanelState(panelEl){
+  if(!panelEl)return;
+  try{
+    var rawId=panelEl.id||'';
+    if(rawId.indexOf('panel-')!==0)return;
+    var id=rawId.substring(6);
+    var state={};
+    var existing=localStorage.getItem(PANEL_STATE_KEY);
+    if(existing)state=JSON.parse(existing)||{};
+    state[id]=panelEl.classList.contains('collapsed');
+    localStorage.setItem(PANEL_STATE_KEY,JSON.stringify(state));
+  }catch(e){console.warn('Failed to save panel state:',e)}
+}
+
+/* On page load, apply saved collapse/expand state to every collapsible panel.
+   For each panel:
+     1. If a saved state exists in localStorage, use it (user's preference wins).
+     2. Otherwise, if the panel definition has defaultCollapsed:true, collapse it.
+     3. Otherwise, leave it expanded (the default rendering). */
+function applySavedPanelStates(){
+  var state={};
+  try{
+    var raw=localStorage.getItem(PANEL_STATE_KEY);
+    if(raw)state=JSON.parse(raw)||{};
+  }catch(e){console.warn('Failed to load panel state:',e)}
+
+  /* Build a quick lookup of panel definitions by id so we can read defaultCollapsed */
+  var defaults={};
+  if(typeof PANELS!=='undefined'){
+    PANELS.forEach(function(p){if(p&&p.id)defaults[p.id]=!!p.defaultCollapsed});
+  }
+
+  document.querySelectorAll('.collapsible').forEach(function(panel){
+    var rawId=panel.id||'';
+    if(rawId.indexOf('panel-')!==0)return;
+    var id=rawId.substring(6);
+    var shouldCollapse;
+    if(state.hasOwnProperty(id)){
+      /* User has explicitly toggled this panel before — respect that */
+      shouldCollapse=state[id]===true;
+    }else{
+      /* No saved state — use the panel's defaultCollapsed flag */
+      shouldCollapse=defaults[id]===true;
+    }
+    if(shouldCollapse){
+      panel.classList.add('collapsed');
+    }else{
+      panel.classList.remove('collapsed');
+    }
   });
 }
 
@@ -1249,6 +1307,10 @@ document.addEventListener('click',function(e){
    The Facebook panel (last) is excluded from reordering. */
 
 var PANELS_STORAGE_KEY='kn_weather_panel_order';
+/* localStorage key for per-panel collapse/expand state. Maps panel id -> boolean
+   (true = collapsed). Missing entries fall back to the panel's defaultCollapsed
+   flag, then to expanded. */
+var PANEL_STATE_KEY='kn_weather_panel_state';
 var moveModeBackup=null;  /* stores the DOM order before entering move mode */
 
 function enterMovePanelsMode(){
@@ -1311,6 +1373,9 @@ function resetPanelOrder(){
   /* Rebuild panels in default order */
   buildPanels();
   bindCollapsibles();
+  /* Re-apply saved collapse/expand state — kept separate from panel ORDER so
+     that resetting the order doesn't also wipe the user's collapse preferences. */
+  applySavedPanelStates();
   updateDynamicTitles();
   parseFacebookPlugin();
   showToast('Panel order reset to default');
@@ -4441,6 +4506,10 @@ async function init(){
   bindCollapsibles();
   /* Apply saved panel order from localStorage (if the user previously reordered panels) */
   loadSavedPanelOrder();
+  /* Apply saved collapse/expand state from localStorage. For panels the user has
+     never toggled, fall back to each panel's defaultCollapsed flag (e.g. WWA
+     Color Code starts collapsed to keep the page compact). */
+  applySavedPanelStates();
   /* Set dynamic panel titles for the initial location */
   updateDynamicTitles();
   /* Trigger Facebook plugin parsing (the fb-page element was just built by buildPanels()).

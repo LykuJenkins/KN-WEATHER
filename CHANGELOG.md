@@ -1,5 +1,13 @@
 # KN Weather Center — Changelog
 
+## 2026-06-22 — Panel layout & collapse-state persistence
+
+- **Changed**: Moved Threats panel to slot 4 (immediately after 7-Day, before WWA Map). It now sits with the top at-a-glance panels instead of being buried at slot 7.
+- **Added**: Panel collapse/expand state is now persisted to `localStorage` under `kn_weather_panel_state`. When a user collapses or expands any panel, the choice survives page refresh and return visits.
+- **Added**: New `defaultCollapsed` flag on panel definitions. Panels with `defaultCollapsed: true` start collapsed on first visit (or any time the user has never toggled them). Once the user toggles a panel, their explicit choice takes precedence over the default.
+- **Changed**: WWA Map Color Code panel now starts collapsed by default. The full color grid is large and was eating screen real estate; users who want it visible can expand it once and the choice will be remembered.
+- **Fixed**: `resetPanelOrder()` no longer wipes the user's collapse preferences — it only resets the panel *order* (a separate concern). Collapse state is re-applied after the rebuild.
+
 ## 2026-06-22 — PWA assets and logo fix
 
 - **Added**: `profile_picture.png` (1024x1024) — bundled in the repo as the canonical logo/icon asset. Used for site header logo, iOS home screen icon (`apple-touch-icon`), and PWA manifest icons (192/512/1024 sizes).
