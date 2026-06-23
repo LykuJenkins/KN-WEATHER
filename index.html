@@ -531,8 +531,8 @@ body.capturing .mom-mode-toggle{display:none}
 .senv-levels-title{font-size:10px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .senv-levels-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
 .senv-level-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px;border-left:3px solid var(--bdr)}
-.senv-level-card.saturated{border-left-color:#60a5fa}
-.senv-level-card.humid{border-left-color:#a3e635}
+.senv-level-card.saturated{border-left-color:#1e40af}
+.senv-level-card.humid{border-left-color:#14b8a6}
 .senv-level-card.moderate{border-left-color:#34d399}
 .senv-level-card.dry{border-left-color:#fb923c}
 .senv-level-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -1221,7 +1221,7 @@ var PANELS=[
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
-    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div class="senv-help collapsible collapsed" id="senvHelpToggle"><div class="senv-help-title collapse-toggle"><i class="fas fa-circle-info"></i> How to Read This Chart<i class="fas fa-chevron-down collapse-icon"></i></div><div class="collapse-body senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#60a5fa"></div><div><b>Blue band = Saturated</b><br>Dewpoint depression 2C or less. Air is near saturation - clouds, fog, or precipitation likely at this level.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#a3e635"></div><div><b>Light green band = Humid</b><br>Dewpoint depression 2-5C. Moderate moisture - some cloud development possible.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green band = Moderate</b><br>Dewpoint depression 5-10C. Mixed moisture - dry at some levels, humid at others.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb923c"></div><div><b>Orange band = Dry</b><br>Dewpoint depression over 10C. Dry, stable air - low precipitation risk at this level.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:transparent;border:1px dashed #a855f6"></div><div><b>Purple dotted lines = Level boundaries</b><br>Separate the standard pressure levels (SFC, 925, 850, 700, 500 hPa). Band colors match the moisture status at each level.</div></div></div></div><div id="senvLevels"></div><div id="senvSummary"></div>'
+    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div class="senv-help collapsible collapsed" id="senvHelpToggle"><div class="senv-help-title collapse-toggle"><i class="fas fa-circle-info"></i> How to Read This Chart<i class="fas fa-chevron-down collapse-icon"></i></div><div class="collapse-body senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#1e40af"></div><div><b>Dark blue band = Saturated</b><br>Dewpoint depression 2C or less. Air is near saturation - clouds, fog, or precipitation likely at this level.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#14b8a6"></div><div><b>Teal band = Humid</b><br>Dewpoint depression 2-5C. Moderate moisture - some cloud development possible.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green band = Moderate</b><br>Dewpoint depression 5-10C. Mixed moisture - dry at some levels, humid at others.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb923c"></div><div><b>Orange band = Dry</b><br>Dewpoint depression over 10C. Dry, stable air - low precipitation risk at this level.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:transparent;border:1px dashed #a855f6"></div><div><b>Purple dotted lines = Level boundaries</b><br>Separate the standard pressure levels (SFC, 925, 850, 700, 500 hPa). Band colors match the moisture status at each level.</div></div></div></div><div id="senvLevels"></div><div id="senvSummary"></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
@@ -3288,8 +3288,8 @@ function renderSoundingChart(d){
      determined dynamically by calculating the average dewpoint depression
      for data points within that pressure range, then mapping to the moisture
      status color:
-       Saturated (<=2C) = light blue (#60a5fa)
-       Humid (<=5C)     = light green (#a3e635)
+       Saturated (<=2C) = dark blue (#1e40af)
+       Humid (<=5C)     = teal (#14b8a6)
        Moderate (<=10C) = green (#34d399)
        Dry (>10C)       = orange (#fb923c)
      Purple dotted lines separate each band. */
@@ -3311,8 +3311,8 @@ function renderSoundingChart(d){
     });
     if(deps.length===0)return 'rgba(255,255,255,.03)';  /* no data - faint */
     var avgDep=depSum/deps.length;
-    if(avgDep<=2)return 'rgba(96,165,250,.10)';   /* Saturated - light blue */
-    if(avgDep<=5)return 'rgba(163,230,53,.10)';   /* Humid - light green */
+    if(avgDep<=2)return 'rgba(30,64,175,.10)';   /* Saturated - light blue */
+    if(avgDep<=5)return 'rgba(20,184,166,.10)';   /* Humid - light green */
     if(avgDep<=10)return 'rgba(52,211,153,.10)';  /* Moderate - green */
     return 'rgba(251,146,60,.10)';                 /* Dry - orange */
   }
@@ -3485,8 +3485,8 @@ function renderKeyLevels(profile){
 
   /* Determine moisture status from dewpoint depression */
   function moistureStatus(dep){
-    if(dep<=2)return{cls:'saturated',text:'Saturated',color:'#60a5fa'};
-    if(dep<=5)return{cls:'humid',text:'Humid',color:'#a3e635'};
+    if(dep<=2)return{cls:'saturated',text:'Saturated',color:'#1e40af'};
+    if(dep<=5)return{cls:'humid',text:'Humid',color:'#14b8a6'};
     if(dep<=10)return{cls:'moderate',text:'Moderate',color:'#34d399'};
     return{cls:'dry',text:'Dry',color:'#fb923c'};
   }
@@ -3551,8 +3551,8 @@ function renderSoundingSummary(profile){
   });
   var avgDep=depCount>0?totalDep/depCount:999;
   var moistureStatus,moistureColor,moistureDesc;
-  if(avgDep<=2){moistureStatus='Saturated';moistureColor='#60a5fa';moistureDesc='Air is near saturation - clouds, fog, or precipitation likely.'}
-  else if(avgDep<=5){moistureStatus='Humid';moistureColor='#a3e635';moistureDesc='Moderate moisture - some cloud development possible.'}
+  if(avgDep<=2){moistureStatus='Saturated';moistureColor='#1e40af';moistureDesc='Air is near saturation - clouds, fog, or precipitation likely.'}
+  else if(avgDep<=5){moistureStatus='Humid';moistureColor='#14b8a6';moistureDesc='Moderate moisture - some cloud development possible.'}
   else if(avgDep<=10){moistureStatus='Moderate';moistureColor='#34d399';moistureDesc='Mixed moisture - dry air at some levels, humid at others.'}
   else{moistureStatus='Dry';moistureColor='#fb923c';moistureDesc='Dry air throughout - stable conditions, low precipitation risk.'}
 
@@ -3612,8 +3612,8 @@ function renderSoundingSummary(profile){
   }
   var llAvg=llCount>0?llDep/llCount:999;
   var llStatus,llColor,llDesc;
-  if(llAvg<=2){llStatus='Moist';llColor='#60a5fa';llDesc='Near-surface air is saturated ('+llAvg.toFixed(1)+'C depression). Fog or low clouds likely.'}
-  else if(llAvg<=5){llStatus='Humid';llColor='#a3e635';llDesc='Moderate low-level moisture ('+llAvg.toFixed(1)+'C depression). Fuel moisture available for storms.'}
+  if(llAvg<=2){llStatus='Moist';llColor='#1e40af';llDesc='Near-surface air is saturated ('+llAvg.toFixed(1)+'C depression). Fog or low clouds likely.'}
+  else if(llAvg<=5){llStatus='Humid';llColor='#14b8a6';llDesc='Moderate low-level moisture ('+llAvg.toFixed(1)+'C depression). Fuel moisture available for storms.'}
   else if(llAvg<=10){llStatus='Moderate';llColor='#34d399';llDesc='Some low-level moisture ('+llAvg.toFixed(1)+'C depression). May need more humid air for storm initiation.'}
   else{llStatus='Dry';llColor='#fb923c';llDesc='Dry low-level air ('+llAvg.toFixed(1)+'C depression). Storms unlikely without moisture advection.'}
 
