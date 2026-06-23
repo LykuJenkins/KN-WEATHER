@@ -3324,11 +3324,15 @@ function renderSoundingChart(d){
     type:'line',
     plugins:[levelBandsPlugin],
     data:{
-      labels:pres.map(function(p){return Math.round(p)}),
+      /* Temperature is the X-axis (horizontal), Pressure is the Y-axis (vertical).
+         This matches the standard Skew-T diagram layout: temperature increases
+         to the right, pressure (altitude) increases downward.
+         We use a scatter-type chart with parsed {x,y} data so Chart.js plots
+         temp on X and pressure on Y without using category labels. */
       datasets:[
         {
           label:'Temp (°C)',
-          data:temp,
+          data:temp.map(function(t,i){return{x:t,y:pres[i]}}),
           borderColor:'#fb7185',
           backgroundColor:'rgba(251,113,133,.08)',
           fill:false,
@@ -3341,7 +3345,7 @@ function renderSoundingChart(d){
         },
         {
           label:'Dew Pt (°C)',
-          data:dwpt,
+          data:dwpt.map(function(d,i){return{x:d,y:pres[i]}}),
           borderColor:'#34d399',
           backgroundColor:'rgba(52,211,153,.08)',
           fill:false,
@@ -3369,24 +3373,34 @@ function renderSoundingChart(d){
           padding:8,
           cornerRadius:8,
           callbacks:{
-            title:function(items){return items[0].label+' hPa'},
-            label:function(c){return c.dataset.label.includes('Temp')?' '+c.parsed.y+'°C':' '+(c.parsed.y!==null?c.parsed.y+'°C':'N/A')}
+            title:function(items){
+              /* Show pressure as the tooltip title (from the Y value) */
+              var p=items[0]?items[0].parsed.y:null;
+              return p!==null?Math.round(p)+' hPa':'';
+            },
+            label:function(c){
+              /* Show the dataset label + X value (temperature or dewpoint) */
+              return c.dataset.label+': '+c.parsed.x+'°C';
+            }
           }
         }
       },
       scales:{
         x:{
+          /* X-axis = Temperature (horizontal, linear scale) */
+          type:'linear',
           title:{display:true,text:'Temperature (°C)',color:'#5c5c6e',font:{size:9,family:'Inter'}},
           grid:{color:'rgba(139,92,246,.05)',drawBorder:false},
           ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'}}
         },
         y:{
-          /* Inverted y-axis: high pressure at bottom, low pressure at top.
-             This matches how Skew-T diagrams display altitude. */
+          /* Y-axis = Pressure (vertical, inverted: 1000 hPa at bottom, ~100 hPa at top).
+             This matches how Skew-T diagrams display altitude - surface at bottom. */
+          type:'linear',
           reverse:true,
           title:{display:true,text:'Pressure (hPa)',color:'#5c5c6e',font:{size:9,family:'Inter'}},
           grid:{color:'rgba(139,92,246,.05)',drawBorder:false},
-          ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'},callback:function(v){return v>=1000?v:v}}
+          ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'}}
         }
       }
     }
