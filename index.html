@@ -95,6 +95,20 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .settings-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);cursor:pointer;transition:.2s;font-size:11px;color:var(--t2);font-weight:500}
 .settings-item:hover{background:var(--acc-g);color:var(--acc)}
 .settings-item i{width:14px;text-align:center;font-size:11px}
+/* Divider between settings groups */
+.settings-divider{height:1px;background:var(--bdr);margin:6px 4px}
+/* Settings toggle row - label on left, switch on right */
+.settings-toggle{justify-content:flex-start}
+.settings-toggle span{flex:1}
+/* iOS-style switch toggle */
+.settings-switch{position:relative;display:inline-block;width:32px;height:18px;flex-shrink:0}
+.settings-switch input{opacity:0;width:0;height:0;position:absolute}
+.settings-switch-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg2);border:1px solid var(--bdr);border-radius:18px;transition:.3s}
+.settings-switch-slider:before{content:'';position:absolute;height:12px;width:12px;left:2px;top:1px;background:var(--t3);border-radius:50%;transition:.3s}
+.settings-switch input:checked+.settings-switch-slider{background:var(--acc);border-color:var(--acc)}
+.settings-switch input:checked+.settings-switch-slider:before{transform:translateX(14px);background:#fff}
+/* Hidden tab buttons (when Storm Spotter Mode is off, SPC + Storm Spotting tabs are hidden) */
+.tab-btn.hidden-tab{display:none}
 
 /* Move Panels toolbar */
 .move-toolbar{display:none;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;margin-bottom:14px;background:rgba(168,85,246,.08);border:1px solid var(--acc);border-radius:var(--r);backdrop-filter:blur(16px);flex-wrap:wrap;animation:sd .25s ease-out}
@@ -607,6 +621,12 @@ body.capturing .wwas-item-actions{display:none!important}
       <div class="settings-menu" id="settingsMenu">
         <div class="settings-item" onclick="enterMovePanelsMode()"><i class="fas fa-arrows-up-down-left-right"></i><span>Move Panels</span></div>
         <div class="settings-item" onclick="resetPanelOrder()"><i class="fas fa-rotate-left"></i><span>Reset to Default Order</span></div>
+        <div class="settings-divider"></div>
+        <div class="settings-item settings-toggle" id="spotterModeToggle" onclick="toggleSpotterMode()">
+          <i class="fas fa-tower-observation"></i>
+          <span>Storm Spotter Mode</span>
+          <label class="settings-switch" title="Toggle Storm Spotter Mode"><input type="checkbox" id="spotterModeCheckbox" onclick="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
+        </div>
       </div>
     </div>
   </div>
@@ -1313,6 +1333,61 @@ function loadSavedTab(){
   var locTabs=document.getElementById('locTabs');
   var showLocTabs=(activeTab==='current'||activeTab==='nws');
   if(locTabs)locTabs.style.display=showLocTabs?'':'none';
+}
+
+/* ── Storm Spotter Mode ──────────────────────────────────────────────────────
+   Toggle in Settings menu that controls visibility of the SPC and Storm
+   Spotting tabs. When ON: all 4 tabs visible (Current Conditions, NWS, SPC,
+   Storm Spotting). When OFF: only Current Conditions and NWS visible - the
+   SPC and Storm Spotting tabs are hidden. This lets casual users focus on
+   the basics while storm spotters can unlock the advanced tabs.
+
+   State is persisted in localStorage so it survives refresh. If the user
+   turns OFF the mode while currently on SPC or Storm Spotting tab, they're
+   automatically switched to Current Conditions. */
+var SPOTTER_MODE_KEY='kn_weather_spotter_mode';
+var spotterModeEnabled=false;
+
+/* Load saved Storm Spotter Mode state from localStorage. Returns true/false. */
+function loadSpotterMode(){
+  try{
+    return localStorage.getItem(SPOTTER_MODE_KEY)==='true';
+  }catch(e){return false}
+}
+
+/* Save Storm Spotter Mode state to localStorage. */
+function saveSpotterMode(enabled){
+  try{localStorage.setItem(SPOTTER_MODE_KEY,enabled?'true':'false')}catch(e){}
+}
+
+/* Apply Storm Spotter Mode - shows/hides the SPC and Storm Spotting tab buttons.
+   Called on init() and whenever the toggle is clicked. */
+function applySpotterMode(){
+  var spcBtn=document.querySelector('.tab-btn[data-tab="spc"]');
+  var spottingBtn=document.querySelector('.tab-btn[data-tab="spotting"]');
+  var hideClass='hidden-tab';
+  if(spcBtn)spcBtn.classList.toggle(hideClass,!spotterModeEnabled);
+  if(spottingBtn)spottingBtn.classList.toggle(hideClass,!spotterModeEnabled);
+  /* If spotter mode is OFF and the user is currently on SPC or Storm Spotting
+     tab, switch them to Current Conditions (since those tabs are now hidden). */
+  if(!spotterModeEnabled&&(activeTab==='spc'||activeTab==='spotting')){
+    switchTab('current');
+  }
+  /* Update the checkbox state in the settings menu */
+  var cb=document.getElementById('spotterModeCheckbox');
+  if(cb)cb.checked=spotterModeEnabled;
+}
+
+/* Toggle Storm Spotter Mode on/off. Called when the user clicks the toggle
+   in the Settings menu. */
+function toggleSpotterMode(){
+  spotterModeEnabled=!spotterModeEnabled;
+  saveSpotterMode(spotterModeEnabled);
+  applySpotterMode();
+  /* Close the settings menu so the user can see the tab bar change */
+  var menu=document.getElementById('settingsMenu');
+  if(menu)menu.classList.remove('open');
+  showToast(spotterModeEnabled?'Storm Spotter Mode enabled - SPC and Storm Spotting tabs now visible':'Storm Spotter Mode disabled - showing Current Conditions and NWS tabs only');
 }
 
 /* ── Build SPC day tabs from SPC_DAYS ──────────────────────────────────────── */
@@ -5087,6 +5162,11 @@ async function init(){
   /* 2. Restore the saved active tab BEFORE building panels so the correct
        pane gets the .active class on first render. */
   loadSavedTab();
+  /* Load Storm Spotter Mode from localStorage and apply it (hides/shows
+     SPC and Storm Spotting tabs). Done before buildPanels() so the tab
+     bar renders correctly on first paint. */
+  spotterModeEnabled=loadSpotterMode();
+  applySpotterMode();
   /* 3. Build all dynamic UI from data tables */
   buildLocTabs();
   buildPanels();
