@@ -517,6 +517,15 @@ body.capturing .mom-mode-toggle{display:none}
 .senv-help-item{display:flex;align-items:flex-start;gap:8px;font-size:10px;color:var(--t2);line-height:1.4}
 .senv-help-item b{color:var(--t1)}
 .senv-help-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;margin-top:2px}
+/* Sounding summary calculator - auto-generated analysis of the profile data */
+.senv-summary{margin-top:12px;padding:12px;background:rgba(168,85,246,.04);border:1px solid rgba(168,85,246,.2);border-radius:var(--rs)}
+.senv-summary-title{font-size:10px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.senv-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.senv-summary-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px}
+.senv-summary-label{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.senv-summary-val{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--t1);line-height:1.2}
+.senv-summary-desc{font-size:9px;color:var(--t3);margin-top:4px;line-height:1.3}
+.senv-summary-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;text-transform:uppercase;margin-top:4px}
 .sndenv-cat:first-of-type{margin-top:0}
 
 /* WWA Summary panel */
@@ -1193,7 +1202,7 @@ var PANELS=[
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
-    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div class="senv-help"><div class="senv-help-title"><i class="fas fa-circle-info"></i> How to Read This Chart</div><div class="senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div>'
+    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div id="senvSummary"></div><div class="senv-help"><div class="senv-help-title"><i class="fas fa-circle-info"></i> How to Read This Chart</div><div class="senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
@@ -3324,6 +3333,109 @@ function renderSoundingChart(d){
       }
     }
   });
+  /* After rendering the chart, compute and display the summary analysis */
+  renderSoundingSummary(d.profile);
+}
+
+/* Analyze the sounding profile data and output a plain-language summary.
+   Calculates:
+   1. Moisture status (saturated/humid/dry) based on average temp-dewpoint gap
+   2. Temperature inversion detection (layers where temp increases with altitude)
+   3. Lapse rate (C per km) for the 850-500 hPa layer (standard severe wx layer)
+   4. Low-level moisture (surface-850 hPa average dewpoint depression) */
+function renderSoundingSummary(profile){
+  var container=document.getElementById('senvSummary');
+  if(!container)return;
+  if(!profile||!profile.length){container.innerHTML='';return}
+
+  /* Filter to only levels with both temp and dewpoint */
+  var data=profile.filter(function(p){return p.temp!==null&&p.dwpt!==null});
+  if(data.length<2){container.innerHTML='';return}
+
+  /* 1. MOISTURE ANALYSIS: average dewpoint depression (temp - dwpt) across all levels */
+  var totalDep=0,depCount=0;
+  data.forEach(function(p){
+    var dep=p.temp-p.dwpt;
+    if(!isNaN(dep)){totalDep+=dep;depCount++}
+  });
+  var avgDep=depCount>0?totalDep/depCount:999;
+  var moistureStatus,moistureColor,moistureDesc;
+  if(avgDep<=2){moistureStatus='Saturated';moistureColor='var(--dng)';moistureDesc='Air is near saturation - clouds, fog, or precipitation likely.'}
+  else if(avgDep<=5){moistureStatus='Humid';moistureColor='var(--wrn)';moistureDesc='Moderate moisture - some cloud development possible.'}
+  else if(avgDep<=10){moistureStatus='Moderate';moistureColor='var(--acc)';moistureDesc='Mixed moisture - dry air at some levels, humid at others.'}
+  else{moistureStatus='Dry';moistureColor='var(--suc)';moistureDesc='Dry air throughout - stable conditions, low precipitation risk.'}
+
+  /* 2. TEMPERATURE INVERSION DETECTION: find layers where temp increases with
+     decreasing pressure (going up, temp goes up instead of down) */
+  var inversions=[];
+  for(var i=1;i<data.length;i++){
+    var tempDiff=data[i].temp-data[i-1].temp;
+    var presDiff=data[i-1].pres-data[i].pres;
+    if(tempDiff>0&&presDiff>0){
+      if(inversions.length>0&&inversions[inversions.length-1].endPres===data[i-1].pres){
+        inversions[inversions.length-1].endPres=data[i].pres;
+        inversions[inversions.length-1].endTemp=data[i].temp;
+        inversions[inversions.length-1].strength=Math.max(inversions[inversions.length-1].strength,tempDiff);
+      }else{
+        inversions.push({startPres:data[i-1].pres,endPres:data[i].pres,startTemp:data[i-1].temp,endTemp:data[i].temp,strength:tempDiff});
+      }
+    }
+  }
+  var hasInversion=inversions.length>0;
+  var invDesc=hasInversion?'Inversion at '+inversions[0].startPres+'-'+inversions[0].endPres+' hPa ('+inversions[0].strength.toFixed(1)+'C warming). Stable layer can trap haze, fog, or pollutants.':'No significant inversion. Air cools steadily with altitude (normal lapse rate).';
+  var invStatus=hasInversion?'Present':'None';
+  var invColor=hasInversion?'var(--wrn)':'var(--suc)';
+
+  /* 3. LAPSE RATE: calculate for the 850-500 hPa layer (standard severe weather layer) */
+  function presToHeight(pres){
+    return 44330*(1-Math.pow(pres/1013.25,0.1903));
+  }
+  var p850=null,p500=null;
+  for(var j=0;j<data.length;j++){
+    if(!p850&&data[j].pres<=850)p850=data[j];
+    if(!p500&&data[j].pres<=500)p500=data[j];
+  }
+  var lapseRate=null,lapseStatus,lapseColor,lapseDesc;
+  if(p850&&p500){
+    var tempChange=p500.temp-p850.temp;
+    var heightChange=(presToHeight(p500.pres)-presToHeight(p850.pres))/1000;
+    if(heightChange>0){
+      lapseRate=-tempChange/heightChange;
+      if(lapseRate>=9.8){lapseStatus='Very Unstable';lapseColor='var(--dng)';lapseDesc='Near/exceeding dry adiabatic rate ('+lapseRate.toFixed(1)+'C/km). Severe storm risk if moisture present.'}
+      else if(lapseRate>=7){lapseStatus='Unstable';lapseColor='var(--wrn)';lapseDesc='Steep lapse rate ('+lapseRate.toFixed(1)+'C/km). Favorable for thunderstorm development.'}
+      else if(lapseRate>=5){lapseStatus='Cond. Unstable';lapseColor='var(--acc)';lapseDesc='Moderate lapse rate ('+lapseRate.toFixed(1)+'C/km). Storms possible with forcing and moisture.'}
+      else if(lapseRate>=2){lapseStatus='Stable';lapseColor='var(--suc)';lapseDesc='Weak lapse rate ('+lapseRate.toFixed(1)+'C/km). Air is stable - convection unlikely.'}
+      else{lapseStatus='Very Stable';lapseColor='var(--t3)';lapseDesc='Very weak lapse rate ('+lapseRate.toFixed(1)+'C/km). Strongly stable - no convection expected.'}
+    }
+  }else{
+    lapseStatus='N/A';lapseColor='var(--t3)';lapseDesc='Insufficient data for 850-500 hPa layer calculation.'
+  }
+
+  /* 4. LOW-LEVEL MOISTURE: average dewpoint depression in the surface-850 hPa layer */
+  var llDep=0,llCount=0;
+  for(var k=0;k<data.length;k++){
+    if(data[k].pres>=850){
+      var dep=data[k].temp-data[k].dwpt;
+      if(!isNaN(dep)){llDep+=dep;llCount++}
+    }else{break}
+  }
+  var llAvg=llCount>0?llDep/llCount:999;
+  var llStatus,llColor,llDesc;
+  if(llAvg<=2){llStatus='Moist';llColor='var(--dng)';llDesc='Near-surface air is saturated ('+llAvg.toFixed(1)+'C depression). Fog or low clouds likely.'}
+  else if(llAvg<=5){llStatus='Humid';llColor='var(--wrn)';llDesc='Moderate low-level moisture ('+llAvg.toFixed(1)+'C depression). Fuel moisture available for storms.'}
+  else if(llAvg<=10){llStatus='Moderate';llColor='var(--acc)';llDesc='Some low-level moisture ('+llAvg.toFixed(1)+'C depression). May need more humid air for storm initiation.'}
+  else{llStatus='Dry';llColor='var(--suc)';llDesc='Dry low-level air ('+llAvg.toFixed(1)+'C depression). Storms unlikely without moisture advection.'}
+
+  /* Build the summary HTML */
+  var html='<div class="senv-summary">';
+  html+='<div class="senv-summary-title"><i class="fas fa-calculator"></i> Sounding Summary Analysis</div>';
+  html+='<div class="senv-summary-grid">';
+  html+='<div class="senv-summary-card"><div class="senv-summary-label">Overall Moisture</div><div class="senv-summary-val" style="color:'+moistureColor+'">'+moistureStatus+'</div><div class="senv-summary-desc">'+moistureDesc+'</div><div class="senv-summary-badge" style="background:'+moistureColor+'22;color:'+moistureColor+'">Avg depression: '+avgDep.toFixed(1)+'C</div></div>';
+  html+='<div class="senv-summary-card"><div class="senv-summary-label">Temperature Inversion</div><div class="senv-summary-val" style="color:'+invColor+'">'+invStatus+'</div><div class="senv-summary-desc">'+invDesc+'</div></div>';
+  html+='<div class="senv-summary-card"><div class="senv-summary-label">Lapse Rate (850-500 hPa)</div><div class="senv-summary-val" style="color:'+lapseColor+'">'+lapseStatus+'</div><div class="senv-summary-desc">'+lapseDesc+'</div></div>';
+  html+='<div class="senv-summary-card"><div class="senv-summary-label">Low-Level Moisture (SFC-850)</div><div class="senv-summary-val" style="color:'+llColor+'">'+llStatus+'</div><div class="senv-summary-desc">'+llDesc+'</div></div>';
+  html+='</div></div>';
+  container.innerHTML=html;
 }
 
 function senvCard(label,val,unit,badge){
