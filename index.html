@@ -1269,6 +1269,9 @@ async function fP(u){
     var res=await Promise.race([fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u)).then(function(r){if(r.ok)return r.json();throw 0}),to(12e3)]);
     if(res&&res.contents)return res.contents;
   }catch(e3){}
+  /* 4. corsproxy.io fallback - works for some APIs that allorigins can't reach
+        (e.g. aviationweather.gov TAF data) */
+  try{return await Promise.race([fetch('https://corsproxy.io/?url='+encodeURIComponent(u)).then(function(r){if(r.ok)return r.text();throw 0}),to(12e3)])}catch(e4){}
   return null;
 }
 function emp(el,txt){var e=document.getElementById(el);if(e)e.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation" style="margin-right:4px"></i>'+txt+'</div>'}
@@ -5187,8 +5190,8 @@ function pad(n){return n<10?'0'+n:''+n}
 function f2n(f){var p=f.split('/');return parseInt(p[0],10)/parseInt(p[1],10)}
 function dTime(t){var m=t.match(/^(\d{2})(\d{2})(\d{2})Z$/);return m?{day:+m[1],hour:+m[2],minute:+m[3],text:m[1]+' at '+pad(m[2])+':'+pad(m[3])+' Z'}:null}
 function dWind(t){var m=t.match(/^(VRB|\d{3})(\d{2})(G(\d{2}))?KT$/);if(!m)return null;var dir=m[1]==='VRB'?'VRB':+m[1],spd=+m[2],gst=m[4]?+m[4]:null,ds=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];return{direction:dir,speed_kt:spd,gust_kt:gst,text:dir==='VRB'?'Variable at '+spd+' kt'+(gst?', gusts '+gst+' kt':''):'from '+dir+'° ('+ds[Math.round(dir/22.5)%16]+') at '+spd+' kt'+(gst?', gusts '+gst+' kt':'')}}
-function isVis(t){return t==='CAVOK'||/\d+SM$/.test(t)||/^\d\/\dSM$/.test(t)}
-function dVis(t){if(t==='CAVOK')return{miles:10,text:'10+ SM (CAVOK)'};var s=t.replace('SM',''),mi;if(s.includes(' ')){var p=s.split(' ');mi=parseInt(p[0],10)+f2n(p[1])}else if(s.includes('/')){mi=f2n(s)}else{mi=parseFloat(s)}return{miles:mi,text:mi+' SM'}}
+function isVis(t){return t==='CAVOK'||/^P?\d+\.?\d*SM$/.test(t)||/^P?\d+\/\d+SM$/.test(t)}
+function dVis(t){if(t==='CAVOK')return{miles:10,text:'10+ SM (CAVOK)'};var s=t.replace('SM',''),mi,plus=false;if(s.startsWith('P')){plus=true;s=s.substring(1)}if(s.includes(' ')){var p=s.split(' ');mi=parseInt(p[0],10)+f2n(p[1])}else if(s.includes('/')){mi=f2n(s)}else{mi=parseFloat(s)}return{miles:mi,text:(plus?'>':'')+mi+' SM'}}
 function isWx(t){return /^(-|\+|VC)?[A-Z]{2,}$/.test(t)&&!/^(FEW|SCT|BKN|OVC|SKC|CLR|A\d{4})/.test(t)}
 function dWx(t){var iM={'-':'light','+':'heavy',VC:'vicinity'},wM={RA:'rain',DZ:'drizzle',SN:'snow',TS:'thunderstorm',FG:'fog',BR:'mist',HZ:'haze',GR:'hail',GS:'small hail',SG:'snow grains',PL:'ice pellets',SH:'showers',UP:'unknown',FU:'smoke',VA:'volcanic ash',DU:'dust',SA:'sand',PY:'spray',PO:'whirls',SQ:'squalls',FC:'funnel cloud',SS:'sandstorm',DS:'duststorm',FZ:'freezing'},int=null,code=t;if(t.startsWith('VC')){int=iM.VC;code=t.slice(2)}else if(t[0]==='+'||t[0]==='-'){int=iM[t[0]];code=t.slice(1)}return{raw:t,intensity:int,code:code,text:int?int+' '+(wM[code]||code):(wM[code]||code)}}
 function isCl(t){return /^(FEW|SCT|BKN|OVC|VV)\d{3}/.test(t)||t==='SKC'||t==='CLR'}
@@ -5410,7 +5413,7 @@ async function fLocalObs(){
       /* Parse the raw METAR for display values */
       var tempMatch=raw.match(/\b(M?\d{2})\/(M?\d{2})\b/);
       var windMatch=raw.match(/(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT/);
-      var visMatch=raw.match(/\b(\d+(?:\/\d+)?SM)\b/);
+      var visMatch=raw.match(/\b(P?\d+(?:\/\d+)?SM)\b/);
       var altMatch=raw.match(/A(\d{4})/);
       var skyMatch=raw.match(/(OVC|BKN|FEW|SCT)\d{3}/);
       function mc(v){return v&&v.charAt(0)==='M'?-(parseInt(v.slice(1))):(v?parseInt(v):null)}
