@@ -168,11 +168,18 @@ body.move-mode .c:hover{border-color:var(--acc)}
 
 /* Tab strips (generic - used by locations, SPC days, radar views, SPC products, aviation) */
 .loc-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;backdrop-filter:blur(16px)}
-.loc-tab{flex:1;min-width:160px;padding:10px 14px;font-size:11px;font-weight:600;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);cursor:pointer;transition:.2s;color:var(--t3);text-align:center;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px}
+.loc-tab{flex:1;min-width:160px;padding:10px 14px;font-size:11px;font-weight:600;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);cursor:pointer;transition:.2s;color:var(--t3);text-align:center;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;position:relative}
 .loc-tab i{font-size:12px}
 .loc-tab:hover{border-color:var(--bdr-a);color:var(--t1);background:var(--card-h)}
 .loc-tab.on{background:var(--acc-g);border-color:var(--acc);color:var(--acc);box-shadow:0 0 14px var(--acc-g)}
 .loc-tab small{display:block;font-size:8px;font-weight:400;opacity:.7;margin-top:2px;letter-spacing:.02em}
+/* Up/down arrows for Move Counties mode - hidden by default, shown when body has .move-counties-mode */
+.loc-tab-arrows{display:none;position:absolute;top:50%;right:6px;transform:translateY(-50%);flex-direction:column;gap:2px}
+body.move-counties-mode .loc-tab-arrows{display:flex}
+body.move-counties-mode .loc-tab{padding-right:36px}  /* make room for the arrows */
+.loc-tab-arrows .pos-arrow{width:18px;height:14px;border-radius:3px;background:var(--acc-g);border:1px solid var(--acc);color:var(--acc);font-size:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.loc-tab-arrows .pos-arrow:hover:not(:disabled){background:var(--acc);color:#fff}
+.loc-tab-arrows .pos-arrow:disabled{opacity:.3;cursor:not-allowed}
 
 /* #mainGrid is now a plain block container (was display:grid). Each tab pane
    is a child of #mainGrid and stacks vertically. The tab pane itself becomes
@@ -625,6 +632,7 @@ body.capturing .wwas-item-actions{display:none!important}
       <button class="rbtn" id="settingsBtn" onclick="toggleSettings()" title="Settings"><i class="fas fa-gear"></i></button>
       <div class="settings-menu" id="settingsMenu">
         <div class="settings-item" onclick="enterMovePanelsMode()"><i class="fas fa-arrows-up-down-left-right"></i><span>Move Panels</span></div>
+        <div class="settings-item" onclick="enterMoveCountiesMode()"><i class="fas fa-arrows-up-down"></i><span>Move Counties</span></div>
         <div class="settings-item" onclick="resetPanelOrder()"><i class="fas fa-rotate-left"></i><span>Reset to Default Order</span></div>
         <div class="settings-divider"></div>
         <div class="settings-item settings-toggle" id="spotterModeToggle" onclick="toggleSpotterMode()">
@@ -648,6 +656,15 @@ body.capturing .wwas-item-actions{display:none!important}
   <div class="move-tb-right">
     <button class="mtb-btn mtb-save" onclick="savePanelOrder()"><i class="fas fa-check"></i> Save Order</button>
     <button class="mtb-btn mtb-cancel" onclick="cancelMovePanels()"><i class="fas fa-xmark"></i> Cancel</button>
+  </div>
+</div>
+
+<!-- Move Counties toolbar - shown when user enters "Move Counties" mode from Settings -->
+<div class="move-toolbar" id="moveCountiesToolbar" style="background:rgba(168,85,246,.08);border-color:var(--acc)">
+  <div class="move-tb-left"><i class="fas fa-arrows-up-down"></i><span>Move Counties Mode</span> - use the up/down arrows on each county tab to reorder</div>
+  <div class="move-tb-right">
+    <button class="mtb-btn mtb-save" onclick="saveCountyOrder()"><i class="fas fa-check"></i> Save Order</button>
+    <button class="mtb-btn mtb-cancel" onclick="cancelMoveCounties()"><i class="fas fa-xmark"></i> Cancel</button>
   </div>
 </div>
 
@@ -769,15 +786,15 @@ var CONFIG={
    so adding a new location is just one row.
    ─────────────────────────────────────────────────────────────────────────── */
 var LOCATIONS=[
-  {key:'vanburen',label:'Van Buren Co',sub:'Paw Paw',lat:42.221,lon:-85.876,
-    point:'3 Miles NE Lawrence MI (42.24N 86.03W, Elev. 741 ft)',
-    meteoLat:42.2513,meteoLon:-86.0189,meteoZone:'MIZ071'},
   {key:'allegan',label:'Allegan Co',sub:'Allegan',lat:42.532,lon:-85.86,
     point:'5 Miles NNW Allegan MI (42.58N 85.88W, Elev. 810 ft)',
     meteoLat:42.5913,meteoLon:-85.8884,meteoZone:'MIZ064'},
   {key:'kalamazoo',label:'Kalamazoo Co',sub:'Kalamazoo',lat:42.283,lon:-85.574,
     point:'3 Miles SSW Comstock MI (42.24N 85.53W, Elev. 843 ft)',
-    meteoLat:42.2454,meteoLon:-85.5312,meteoZone:'MIZ072'}
+    meteoLat:42.2454,meteoLon:-85.5312,meteoZone:'MIZ072'},
+  {key:'vanburen',label:'Van Buren Co',sub:'Paw Paw',lat:42.221,lon:-85.876,
+    point:'3 Miles NE Lawrence MI (42.24N 86.03W, Elev. 741 ft)',
+    meteoLat:42.2513,meteoLon:-86.0189,meteoZone:'MIZ071'}
 ];
 
 /* URL generators (single source of truth for each URL pattern) */
@@ -1142,6 +1159,7 @@ var REFRESH_FNS=['fWx','fAl','fAFD','fRSS','fDWML','fSPCRss','fAllAv','rSPCImgs'
 /* ── Mutable state ─────────────────────────────────────────────────────────── */
 var CUR_LOC=LOCATIONS[0].key;        /* active location key */
 var CUR_LOC_OBJ=LOCATIONS[0];         /* active location object (cached) */
+var CUR_LOC_STORAGE_KEY='kn_weather_cur_loc';  /* persisted active county */
 var spcActDay=1;                       /* active SPC day tab */
 var radarAct='refl';                   /* active radar view key */
 var spcRssAct='watches';               /* active SPC RSS feed id */
@@ -1210,10 +1228,21 @@ function applyConfigToHeader(){
 function buildLocTabs(){
   var c=document.getElementById('locTabs');
   c.innerHTML=LOCATIONS.map(function(l){
-    return '<div class="loc-tab '+(l.key===CUR_LOC?'on':'')+'" data-loc="'+l.key+'"><i class="fas fa-location-dot"></i>'+l.label+'<small>'+l.sub+'</small></div>';
+    return '<div class="loc-tab '+(l.key===CUR_LOC?'on':'')+'" data-loc="'+l.key+'">'+
+      '<i class="fas fa-location-dot"></i>'+
+      '<span class="loc-tab-label">'+l.label+'<small>'+l.sub+'</small></span>'+
+      '<div class="loc-tab-arrows" data-loc="'+l.key+'">'+
+        '<button class="pos-arrow pos-up" onclick="event.stopPropagation();moveCountyUp(\''+l.key+'\')" title="Move county left"><i class="fas fa-chevron-left"></i></button>'+
+        '<button class="pos-arrow pos-down" onclick="event.stopPropagation();moveCountyDown(\''+l.key+'\')" title="Move county right"><i class="fas fa-chevron-right"></i></button>'+
+      '</div>'+
+      '</div>';
   }).join('');
   c.querySelectorAll('.loc-tab').forEach(function(t){
-    t.addEventListener('click',function(){setLoc(t.dataset.loc)});
+    t.addEventListener('click',function(e){
+      /* Ignore clicks on the arrows - they have their own handlers */
+      if(e.target.closest('.loc-tab-arrows'))return;
+      setLoc(t.dataset.loc);
+    });
   });
 }
 
@@ -1717,6 +1746,121 @@ function loadSavedPanelOrder(){
   }catch(e){console.warn('Failed to load saved panel order:',e)}
 }
 
+/* ── Move Counties mode ──────────────────────────────────────────────────────
+   Lets the user reorder the county tabs (Van Buren, Allegan, Kalamazoo) via
+   up/down arrows that appear on each tab. Mirrors the Move Panels mode.
+   Order is persisted in localStorage (kn_weather_county_order) and restored
+   on page load. */
+var COUNTY_ORDER_KEY='kn_weather_county_order';
+var moveCountiesBackup=null;  /* stores DOM order before entering move mode */
+
+function enterMoveCountiesMode(){
+  /* Close the settings menu */
+  var menu=document.getElementById('settingsMenu');
+  if(menu)menu.classList.remove('open');
+  /* Make sure county tabs are visible (switch to a tab that shows them) */
+  if(activeTab!=='current'&&activeTab!=='nws')switchTab('current');
+  /* Save backup of current DOM order so we can restore on Cancel */
+  moveCountiesBackup=getCurrentCountyOrder();
+  /* Show the move counties toolbar */
+  var tb=document.getElementById('moveCountiesToolbar');
+  if(tb)tb.classList.add('open');
+  /* Add body class that shows the up/down arrows on each county tab */
+  document.body.classList.add('move-counties-mode');
+  /* Update arrow disabled states */
+  updateCountyArrows();
+  /* Scroll to top so the user sees the toolbar + county tabs */
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function exitMoveCountiesMode(){
+  var tb=document.getElementById('moveCountiesToolbar');
+  if(tb)tb.classList.remove('open');
+  document.body.classList.remove('move-counties-mode');
+}
+
+function cancelMoveCounties(){
+  /* Restore the backup order */
+  if(moveCountiesBackup){
+    applyCountyOrder(moveCountiesBackup);
+    moveCountiesBackup=null;
+  }
+  exitMoveCountiesMode();
+}
+
+function saveCountyOrder(){
+  var order=getCurrentCountyOrder();
+  try{localStorage.setItem(COUNTY_ORDER_KEY,JSON.stringify(order))}catch(e){}
+  exitMoveCountiesMode();
+  showToast('County order saved');
+}
+
+/* Get the current county tab order as an array of location keys (from the DOM) */
+function getCurrentCountyOrder(){
+  var tabs=document.querySelectorAll('#locTabs .loc-tab');
+  var order=[];
+  tabs.forEach(function(t){if(t.dataset.loc)order.push(t.dataset.loc)});
+  return order;
+}
+
+/* Apply a county order (array of keys) to the DOM by reordering the loc-tab elements */
+function applyCountyOrder(order){
+  var c=document.getElementById('locTabs');
+  if(!c)return;
+  order.forEach(function(key){
+    var el=c.querySelector('.loc-tab[data-loc="'+key+'"]');
+    if(el)c.appendChild(el);
+  });
+  if(document.body.classList.contains('move-counties-mode'))updateCountyArrows();
+}
+
+/* Update disabled state of up/down arrows based on position */
+function updateCountyArrows(){
+  var tabs=document.querySelectorAll('#locTabs .loc-tab');
+  var total=tabs.length;
+  tabs.forEach(function(t,i){
+    var arrows=t.querySelector('.loc-tab-arrows');
+    if(!arrows)return;
+    var upBtn=arrows.querySelector('.pos-up');
+    var downBtn=arrows.querySelector('.pos-down');
+    if(upBtn)upBtn.disabled=(i===0);
+    if(downBtn)downBtn.disabled=(i===total-1);
+  });
+}
+
+/* Move a county tab left (toward the start) */
+function moveCountyUp(key){
+  var tab=document.querySelector('#locTabs .loc-tab[data-loc="'+key+'"]');
+  if(!tab)return;
+  var prev=tab.previousElementSibling;
+  if(prev){
+    tab.parentNode.insertBefore(tab,prev);
+    updateCountyArrows();
+  }
+}
+
+/* Move a county tab right (toward the end) */
+function moveCountyDown(key){
+  var tab=document.querySelector('#locTabs .loc-tab[data-loc="'+key+'"]');
+  if(!tab)return;
+  var next=tab.nextElementSibling;
+  if(next){
+    tab.parentNode.insertBefore(next,tab);
+    updateCountyArrows();
+  }
+}
+
+/* On page load, check localStorage for a saved county order and apply it */
+function loadSavedCountyOrder(){
+  try{
+    var saved=localStorage.getItem(COUNTY_ORDER_KEY);
+    if(saved){
+      var order=JSON.parse(saved);
+      if(order&&order.length>0)applyCountyOrder(order);
+    }
+  }catch(e){console.warn('Failed to load saved county order:',e)}
+}
+
 /* Toast notification (transient, auto-dismiss) */
 function showToast(msg,isError){
   /* Remove any existing toast */
@@ -2105,6 +2249,8 @@ function setLoc(key){
   var loc=findLoc(key);
   if(!loc)return;
   CUR_LOC=key;CUR_LOC_OBJ=loc;
+  /* Persist the active county so it's restored on page reload */
+  try{localStorage.setItem(CUR_LOC_STORAGE_KEY,key)}catch(e){}
   document.querySelectorAll('.loc-tab').forEach(function(t){t.classList.toggle('on',t.dataset.loc===key)});
   /* Update dynamic panel titles (e.g. "Van Buren Co Observations & Forecast Text") */
   updateDynamicTitles();
@@ -5174,6 +5320,15 @@ async function init(){
      bar renders correctly on first paint. */
   spotterModeEnabled=loadSpotterMode();
   applySpotterMode();
+  /* Restore the saved active county (CUR_LOC) from localStorage so the
+     user comes back to the same county they were viewing. */
+  try{
+    var savedLoc=localStorage.getItem(CUR_LOC_STORAGE_KEY);
+    if(savedLoc){
+      var savedLocObj=findLoc(savedLoc);
+      if(savedLocObj){CUR_LOC=savedLoc;CUR_LOC_OBJ=savedLocObj}
+    }
+  }catch(e){}
   /* 3. Build all dynamic UI from data tables */
   buildLocTabs();
   buildPanels();
@@ -5186,6 +5341,9 @@ async function init(){
   bindCollapsibles();
   /* Apply saved panel order from localStorage (if the user previously reordered panels) */
   loadSavedPanelOrder();
+  /* Apply saved county tab order from localStorage (if the user previously
+     reordered county tabs via Move Counties mode). */
+  loadSavedCountyOrder();
   /* Apply saved collapse/expand state from localStorage. For panels the user has
      never toggled, fall back to each panel's defaultCollapsed flag (e.g. WWA
      Color Code starts collapsed to keep the page compact). */
