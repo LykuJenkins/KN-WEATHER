@@ -3713,8 +3713,66 @@ function renderNowcastChart(d){
   }
 
   if(ncCh)ncCh.destroy();
+
+  /* Level bands with moisture-based colors (same as Storm Environment chart).
+     Uses the NOWCAST profile to determine moisture at each level. */
+  var ncLevelBands=[
+    {min:1000,max:960,label:'SFC',target:1000},
+    {min:960,max:880,label:'925',target:925},
+    {min:880,max:780,label:'850',target:850},
+    {min:780,max:620,label:'700',target:700},
+    {min:620,max:420,label:'500',target:500}
+  ];
+  function getNcBandColor(band){
+    var best=null,bestDiff=999;
+    d.nowcastProfile.forEach(function(p){
+      if(p.temp===null||isNaN(p.temp))return;
+      var diff=Math.abs(p.pres-band.target);
+      if(diff<bestDiff){bestDiff=diff;best=p}
+    });
+    if(!best||bestDiff>20)return 'rgba(255,255,255,.03)';
+    var dep=best.dwpt!==null?best.temp-best.dwpt:999;
+    if(isNaN(dep))return 'rgba(255,255,255,.03)';
+    if(dep<=2)return 'rgba(30,64,175,.10)';   /* Saturated - dark blue */
+    if(dep<=5)return 'rgba(20,184,166,.10)';   /* Humid - teal */
+    if(dep<=10)return 'rgba(52,211,153,.10)';  /* Moderate - green */
+    return 'rgba(251,146,60,.10)';              /* Dry - orange */
+  }
+  var ncBandsPlugin={
+    id:'ncLevelBands',
+    beforeDraw:function(chart){
+      var ctx=chart.ctx;
+      var yAxis=chart.scales.y;
+      if(!yAxis)return;
+      var chartArea=chart.chartArea;
+      ncLevelBands.forEach(function(band,bi){
+        var yMin=yAxis.getPixelForValue(band.min);
+        var yMax=yAxis.getPixelForValue(band.max);
+        var top=Math.min(yMin,yMax);
+        var bottom=Math.max(yMin,yMax);
+        ctx.fillStyle=getNcBandColor(band);
+        ctx.fillRect(chartArea.left,top,chartArea.right-chartArea.left,bottom-top);
+        ctx.fillStyle='rgba(255,255,255,.2)';
+        ctx.font='8px JetBrains Mono';
+        ctx.textAlign='right';
+        ctx.fillText(band.label,chartArea.right-4,top+10);
+        if(bi>0){
+          ctx.strokeStyle='rgba(168,85,246,.4)';
+          ctx.lineWidth=1;
+          ctx.setLineDash([3,3]);
+          ctx.beginPath();
+          ctx.moveTo(chartArea.left,top);
+          ctx.lineTo(chartArea.right,top);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+    }
+  };
+
   ncCh=new Chart(canvas.getContext('2d'),{
     type:'line',
+    plugins:[ncBandsPlugin],
     data:{datasets:datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
