@@ -3348,13 +3348,39 @@ async function fNowcast(){
       }
     }
 
-    /* Step 5: Lake breeze gradient (KLWA shoreline vs KAZO inland) */
+    /* Step 5: Lake breeze gradient analysis (KLWA shoreline vs KAZO inland).
+       A true lake breeze requires:
+       (a) Temperature gradient: shoreline cooler than inland (lake air pushing in)
+       (b) Wind direction: onshore flow (westerly) at the shoreline station
+       (c) Significant gradient: temp difference >= 5F to be meaningful
+       We calculate all three and store them for the alert logic. */
     var lakeBreeze={};
-    if(metars.KLWA&&metars.KAZO&&metars.KLWA.dwpt!==null&&metars.KAZO.dwpt!==null){
+    if(metars.KLWA&&metars.KAZO&&metars.KLWA.temp!==null&&metars.KAZO.temp!==null){
+      lakeBreeze.klwaTemp=metars.KLWA.temp;
+      lakeBreeze.kazoTemp=metars.KAZO.temp;
       lakeBreeze.klwaDwpt=metars.KLWA.dwpt;
       lakeBreeze.kazoDwpt=metars.KAZO.dwpt;
-      lakeBreeze.diff=Math.abs(metars.KLWA.dwpt-metars.KAZO.dwpt)*1.8;
-      lakeBreeze.shoreWarmer=metars.KLWA.dwpt>metars.KAZO.dwpt;
+      /* Temperature difference (inland warmer = positive, typical lake breeze) */
+      lakeBreeze.tempDiff=(metars.KAZO.temp-metars.KLWA.temp)*1.8;  /* C to F */
+      /* Dewpoint difference */
+      if(metars.KLWA.dwpt!==null&&metars.KAZO.dwpt!==null){
+        lakeBreeze.dwptDiff=Math.abs(metars.KLWA.dwpt-metars.KAZO.dwpt)*1.8;
+      }
+      /* Wind direction check for onshore flow at shoreline (KLWA).
+         Lake Michigan is to the west, so onshore = wind from W, WNW, NW, SW, WSW
+         (directions 225-315 degrees). */
+      lakeBreeze.onshore=false;
+      if(metars.KLWA&&metars.KLWA.windDir!==null){
+        var wd=metars.KLWA.windDir;
+        lakeBreeze.klwaWindDir=wd;
+        lakeBreeze.onshore=(wd>=225&&wd<=315);
+      }
+      /* A lake breeze is "detected" only if:
+         - Inland is at least 5F warmer than shoreline (temp gradient)
+         - Shoreline wind is onshore (225-315 degrees)
+         If only the temp gradient exists but wind is offshore, it's just
+         a temperature difference, not a true lake breeze boundary. */
+      lakeBreeze.detected=lakeBreeze.tempDiff>=5&&lakeBreeze.onshore;
     }
 
     /* Step 6: Assemble nowcast data */
@@ -3404,9 +3430,11 @@ function renderNowcast(d){
     html+='<div class="nc-card"><div class="nc-card-label">Live Surface</div><div class="nc-card-val">--</div><div class="nc-card-sub">METAR unavailable</div></div>';
   }
 
-  if(d.lakeBreeze&&d.lakeBreeze.diff!==undefined){
-    var lbColor=d.lakeBreeze.diff>2.8?'var(--wrn)':'var(--suc)';
-    html+='<div class="nc-card"><div class="nc-card-label">Lake Breeze Gradient</div><div class="nc-card-val" style="color:'+lbColor+'">'+d.lakeBreeze.diff.toFixed(1)+'F</div><div class="nc-card-sub">LWA vs KAZO dewpoint</div></div>';
+  if(d.lakeBreeze&&d.lakeBreeze.tempDiff!==undefined){
+    var lbDetected=d.lakeBreeze.detected;
+    var lbColor=lbDetected?'var(--dng)':d.lakeBreeze.tempDiff>=5?'var(--wrn)':'var(--suc)';
+    var lbStatus=lbDetected?'Detected':d.lakeBreeze.tempDiff>=5?'Gradient (no onshore wind)':'Not detected';
+    html+='<div class="nc-card"><div class="nc-card-label">Lake Breeze</div><div class="nc-card-val" style="color:'+lbColor+'">'+lbStatus+'</div><div class="nc-card-sub">Temp grad: '+d.lakeBreeze.tempDiff.toFixed(1)+'F | Wind: '+(d.lakeBreeze.onshore?'onshore':'offshore')+'</div></div>';
   }
 
   html+='</div>';
@@ -3722,10 +3750,11 @@ function renderNowcastAlerts(d){
     }
   }
 
-  /* Lake breeze boundary: shoreline vs inland dewpoint difference > 5F */
-  if(d.lakeBreeze&&d.lakeBreeze.diff&&d.lakeBreeze.diff>2.8){
-    var shoreSide=d.lakeBreeze.shoreWarmer?'shoreline (LWA) warmer':'inland (KAZO) warmer';
-    alerts.push({cls:'info',icon:'fa-water',text:'[INFO] Sharp moisture gradient near Lake Michigan shoreline. '+d.lakeBreeze.diff.toFixed(1)+'F dewpoint difference ('+shoreSide+'). Lake breeze boundary may trigger convection.'});
+  /* Lake breeze boundary: only alert if actually detected (temp gradient >= 5F
+     AND onshore wind at shoreline). A simple dewpoint difference alone is not
+     sufficient evidence of a lake breeze boundary. */
+  if(d.lakeBreeze&&d.lakeBreeze.detected){
+    alerts.push({cls:'info',icon:'fa-water',text:'[INFO] Lake breeze boundary detected near Lake Michigan shoreline. Inland '+d.lakeBreeze.tempDiff.toFixed(1)+'F warmer than shoreline with onshore flow (wind '+d.lakeBreeze.klwaWindDir+' degrees). Boundary may trigger convection if it intersects instability.'});
   }
 
   /* High CAPE with moisture */
