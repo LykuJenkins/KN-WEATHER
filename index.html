@@ -269,6 +269,18 @@ body.capturing .cu .tmp{
 .dl{font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:2px}
 .dv{font-size:15px;font-weight:700;font-family:'JetBrains Mono',monospace}
 .du{font-size:9px;color:var(--t3);font-weight:400}
+/* Mom Mode - shows Rufus the Weather Dog instead of detailed metrics.
+   When body has .mom-mode, hide the metrics grid (.dg) and show the Rufus
+   container (.rufus-container). Hidden during screenshots (body.capturing). */
+.rufus-container{display:none;flex-direction:column;align-items:center;gap:10px;margin-top:14px;padding:14px;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs)}
+body.mom-mode .cu .dg{display:none}
+body.mom-mode .rufus-container{display:flex}
+.rufus-img{width:180px;height:180px;border-radius:12px;object-fit:cover;border:2px solid var(--acc);box-shadow:0 0 20px var(--acc-g)}
+.rufus-caption{font-size:13px;font-weight:600;color:var(--t2);text-align:center;line-height:1.4;max-width:280px}
+.rufus-caption strong{color:var(--acc);font-weight:700}
+.rufus-label{font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em}
+/* Hide Mom Mode toggle during screenshot capture */
+body.capturing .mom-mode-toggle{display:none}
 
 /* Threats */
 .tl{display:flex;flex-direction:column;gap:11px}
@@ -640,6 +652,11 @@ body.capturing .wwas-item-actions{display:none!important}
           <span>Storm Spotter Mode</span>
           <label class="settings-switch" title="Toggle Storm Spotter Mode"><input type="checkbox" id="spotterModeCheckbox" onclick="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
         </div>
+        <div class="settings-item settings-toggle mom-mode-toggle" id="momModeToggle" onclick="toggleMomMode()">
+          <i class="fas fa-dog"></i>
+          <span>Mom Mode</span>
+          <label class="settings-switch" title="Toggle Mom Mode - shows Rufus the Weather Dog instead of detailed metrics"><input type="checkbox" id="momModeCheckbox" onclick="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
+        </div>
       </div>
     </div>
   </div>
@@ -885,6 +902,63 @@ var WMO={
   96:{d:'Thunderstorm w/ Hail',i:'fa-cloud-bolt',di:'fa-cloud-bolt'},
   99:{d:'Severe Thunderstorm',i:'fa-cloud-bolt',di:'fa-cloud-bolt'}
 };
+
+/* Rufus the Weather Dog - maps WMO weather codes to Rufus images + captions.
+   Used by Mom Mode on the Current panel. Each entry: {img, caption}.
+   img = filename in ./rufus/ directory. caption = "Rufus suggests..." text.
+   Codes not listed fall back to default.jpg with a generic message. */
+var RUFUS_MAP={
+  /* Sunny / clear */
+  0:{img:'sunny.png',caption:'Rufus suggests enjoying the sunshine, every butterfly is a reason to smile.'},
+  1:{img:'sunny.png',caption:'Rufus suggests enjoying the sunshine, every butterfly is a reason to smile.'},
+  /* Partly cloudy */
+  2:{img:'partly_cloudy.png',caption:'Rufus suggests looking up, the sky is putting on a show.'},
+  /* Overcast / cloudy */
+  3:{img:'cloudy.png',caption:'Rufus suggests a cozy day, even clouds need a hug sometimes.'},
+  /* Fog */
+  45:{img:'fog.png',caption:'Rufus suggests slowing down, even thick fog clears with patience.'},
+  48:{img:'fog.png',caption:'Rufus suggests slowing down, even thick fog clears with patience.'},
+  /* Drizzle / light rain */
+  51:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  53:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  55:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  /* Rain */
+  61:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  63:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  /* Heavy rain */
+  65:{img:'thunder.png',caption:'Rufus suggests staying calm, storms sound fierce, but they always pass.'},
+  /* Snow */
+  71:{img:'snow.png',caption:'Rufus suggests staying warm, cocoa, blankets, and quiet snowfall cure everything.'},
+  73:{img:'snow.png',caption:'Rufus suggests staying warm, cocoa, blankets, and quiet snowfall cure everything.'},
+  75:{img:'snow.png',caption:'Rufus suggests staying warm, cocoa, blankets, and quiet snowfall cure everything.'},
+  /* Rain showers */
+  80:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  81:{img:'rain.png',caption:'Rufus suggests finding joy in drizzle, puddles are just nature\u2019s playground.'},
+  /* Violent showers (treat like thunderstorm) */
+  82:{img:'thunder.png',caption:'Rufus suggests staying calm, storms sound fierce, but they always pass.'},
+  /* Snow showers */
+  85:{img:'snow.png',caption:'Rufus suggests staying warm, cocoa, blankets, and quiet snowfall cure everything.'},
+  86:{img:'snow.png',caption:'Rufus suggests staying warm, cocoa, blankets, and quiet snowfall cure everything.'},
+  /* Thunderstorm */
+  95:{img:'thunder.png',caption:'Rufus suggests staying calm, storms sound fierce, but they always pass.'},
+  96:{img:'thunder.png',caption:'Rufus suggests staying calm, storms sound fierce, but they always pass.'},
+  99:{img:'thunder.png',caption:'Rufus suggests staying calm, storms sound fierce, but they always pass.'}
+};
+/* Default Rufus (for unknown weather codes or errors) */
+var RUFUS_DEFAULT={img:'default.jpg',caption:'Rufus is checking the sky...'};
+
+/* Get Rufus image + caption for a WMO weather code.
+   Also checks wind speed for the "windy" image (>= 20 mph = windy). */
+function getRufusForWeather(weatherCode,windSpeedMph){
+  /* If wind is strong, show windy Rufus regardless of weather code
+     (unless it's thunderstorm or snow - those take priority) */
+  var isWindy=windSpeedMph!==undefined&&windSpeedMph!==null&&parseFloat(windSpeedMph)>=20;
+  var isPriorityWeather=[45,48,65,71,73,75,85,86,82,95,96,99].indexOf(weatherCode)>=0;
+  if(isWindy&&!isPriorityWeather){
+    return{img:'windy.png',caption:'Rufus suggests chasing the breeze, every gust hides a new adventure.'};
+  }
+  return RUFUS_MAP[weatherCode]||RUFUS_DEFAULT;
+}
 </script>
 
 <script>
@@ -912,7 +986,7 @@ var PANELS=[
     id:'current',title:'Current',icon:'fa-temperature-half',
     badge:'Live',badgeClass:'cb-l',gridClass:'g1',extraClass:'cu',
     updateId:'upd-cur',refreshFn:'fWx',collapsible:true,tab:'current',
-    body:'<div class="hero"><div class="ci" id="cIco"><i class="fas fa-cloud-sun"></i></div><div class="tmp" id="cTmp">--&deg;F</div><div class="fl" id="cFl">Feels like --&deg;F</div><div class="cd" id="cCd">Loading...</div><div class="nws-line" id="nwsLine" style="display:none"><strong>NWS:</strong> <span id="nwsTxt"></span></div></div><div class="dg"><div class="di"><div class="dl">Humidity</div><div class="dv" id="dHu">--<span class="du">%</span></div></div><div class="di"><div class="dl">Dew Point</div><div class="dv" id="dDw">--<span class="du">&deg;F</span></div></div><div class="di"><div class="dl">Wind</div><div class="dv" id="dWi">--<span class="du">mph</span></div></div><div class="di"><div class="dl">Pressure</div><div class="dv" id="dPr">--<span class="du">inHg</span></div></div></div>'
+    body:'<div class="hero"><div class="ci" id="cIco"><i class="fas fa-cloud-sun"></i></div><div class="tmp" id="cTmp">--&deg;F</div><div class="fl" id="cFl">Feels like --&deg;F</div><div class="cd" id="cCd">Loading...</div><div class="nws-line" id="nwsLine" style="display:none"><strong>NWS:</strong> <span id="nwsTxt"></span></div></div><div class="dg"><div class="di"><div class="dl">Humidity</div><div class="dv" id="dHu">--<span class="du">%</span></div></div><div class="di"><div class="dl">Dew Point</div><div class="dv" id="dDw">--<span class="du">&deg;F</span></div></div><div class="di"><div class="dl">Wind</div><div class="dv" id="dWi">--<span class="du">mph</span></div></div><div class="di"><div class="dl">Pressure</div><div class="dv" id="dPr">--<span class="du">inHg</span></div></div></div><div class="rufus-container" id="rufusContainer"><div class="rufus-label">Rufus the Weather Dog</div><img class="rufus-img" id="rufusImg" src="./rufus/default.jpg" alt="Rufus the Weather Dog"><div class="rufus-caption" id="rufusCaption">Rufus is checking the sky...</div></div>'
   },
   /* 2. Hourly Forecast */
   {
@@ -1422,6 +1496,46 @@ function toggleSpotterMode(){
   var menu=document.getElementById('settingsMenu');
   if(menu)menu.classList.remove('open');
   showToast(spotterModeEnabled?'Storm Spotter Mode enabled - SPC and Storm Spotting tabs now visible':'Storm Spotter Mode disabled - showing Current Conditions and NWS tabs only');
+}
+
+/* ── Mom Mode ────────────────────────────────────────────────────────────────
+   Toggle in Settings menu that swaps the Current panel's detailed metrics
+   (humidity, dew point, wind, pressure) for a friendly "Rufus the Weather
+   Dog" image + caption. The image and caption change based on the current
+   weather conditions, matching the same WMO weather codes used by the
+   regular weather icons. Falls back to a default Rufus image on error or
+   unknown weather codes.
+
+   The toggle itself is hidden during screenshot capture (body.capturing)
+   so screenshots don't show the Mom Mode option in the settings menu.
+   However, if Mom Mode is ON, screenshots of the Current panel WILL show
+   Rufus (the mode affects what's displayed, not just the toggle). */
+var MOM_MODE_KEY='kn_weather_mom_mode';
+var momModeEnabled=false;
+
+function loadMomMode(){
+  try{return localStorage.getItem(MOM_MODE_KEY)==='true'}catch(e){return false}
+}
+function saveMomMode(enabled){
+  try{localStorage.setItem(MOM_MODE_KEY,enabled?'true':'false')}catch(e){}
+}
+function applyMomMode(){
+  document.body.classList.toggle('mom-mode',momModeEnabled);
+  var cb=document.getElementById('momModeCheckbox');
+  if(cb)cb.checked=momModeEnabled;
+  /* If enabling Mom Mode, re-render the current conditions so Rufus appears
+     immediately (otherwise it waits for the next refresh). */
+  if(momModeEnabled&&typeof lastCurrentConditions!=='undefined'&&lastCurrentConditions){
+    rCu(lastCurrentConditions);
+  }
+}
+function toggleMomMode(){
+  momModeEnabled=!momModeEnabled;
+  saveMomMode(momModeEnabled);
+  applyMomMode();
+  var menu=document.getElementById('settingsMenu');
+  if(menu)menu.classList.remove('open');
+  showToast(momModeEnabled?'Mom Mode enabled - Rufus the Weather Dog is on duty':'Mom Mode disabled - showing detailed metrics');
 }
 
 /* ── Build SPC day tabs from SPC_DAYS ──────────────────────────────────────── */
@@ -2289,7 +2403,28 @@ async function fWx(){
     if(hBdg){hBdg.textContent='Live';hBdg.className='cb cb-l'}
   }catch(e){document.getElementById('cCd').textContent='Data unavailable'}
 }
-function rCu(c){var i=wI(c.weather_code,true);document.getElementById('cTmp').textContent=Math.round(c.temperature_2m)+'°F';document.getElementById('cFl').textContent='Feels like '+Math.round(c.apparent_temperature)+'°F';document.getElementById('cCd').textContent=i.d;document.getElementById('cIco').innerHTML='<i class="fas '+i.i+'"></i>';document.getElementById('dHu').innerHTML=c.relative_humidity_2m+'<span class="du">%</span>';document.getElementById('dDw').innerHTML=Math.round(c.dew_point_2m)+'<span class="du">°F</span>';document.getElementById('dWi').innerHTML=m2m(c.wind_speed_10m)+' '+d2c(c.wind_direction_10m)+'<span class="du">mph</span>';document.getElementById('dPr').innerHTML=h2i(c.surface_pressure)+'<span class="du">inHg</span>'}
+var lastCurrentConditions=null;
+function rCu(c){
+  /* Cache the current conditions so Mom Mode can re-render Rufus immediately
+     when toggled on, without waiting for the next data refresh. */
+  lastCurrentConditions=c;
+  var i=wI(c.weather_code,true);
+  document.getElementById('cTmp').textContent=Math.round(c.temperature_2m)+'°F';
+  document.getElementById('cFl').textContent='Feels like '+Math.round(c.apparent_temperature)+'°F';
+  document.getElementById('cCd').textContent=i.d;
+  document.getElementById('cIco').innerHTML='<i class="fas '+i.i+'"></i>';
+  document.getElementById('dHu').innerHTML=c.relative_humidity_2m+'<span class="du">%</span>';
+  document.getElementById('dDw').innerHTML=Math.round(c.dew_point_2m)+'<span class="du">°F</span>';
+  document.getElementById('dWi').innerHTML=m2m(c.wind_speed_10m)+' '+d2c(c.wind_direction_10m)+'<span class="du">mph</span>';
+  document.getElementById('dPr').innerHTML=h2i(c.surface_pressure)+'<span class="du">inHg</span>';
+  /* Update Rufus the Weather Dog (Mom Mode). Always update the image + caption
+     so they're ready when Mom Mode is toggled on; CSS controls visibility. */
+  var rufus=getRufusForWeather(c.weather_code,m2m(c.wind_speed_10m));
+  var rufusImg=document.getElementById('rufusImg');
+  var rufusCap=document.getElementById('rufusCaption');
+  if(rufusImg){rufusImg.src='./rufus/'+rufus.img;rufusImg.onerror=function(){this.src='./rufus/default.jpg'}}
+  if(rufusCap){rufusCap.innerHTML='<strong>'+rufus.caption+'</strong>'}
+}
 function rHr(h){var now=new Date(),ix=h.time.findIndex(function(t){return new Date(t)>=now}),s=Math.max(0,ix),e=Math.min(h.time.length,s+24),lb=[],tp=[],pp=[];for(var i=s;i<e;i++){var d=new Date(h.time[i]);lb.push(d.toLocaleTimeString('en-US',{hour:'numeric',hour12:true}));tp.push(h.temperature_2m[i]);pp.push(h.precipitation_probability[i])}if(hCh)hCh.destroy();hCh=new Chart(document.getElementById('hCh').getContext('2d'),{type:'line',data:{labels:lb,datasets:[{label:'Temp (°F)',data:tp,borderColor:'#a855f6',backgroundColor:'rgba(168,85,246,.08)',fill:true,tension:.4,borderWidth:2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#a855f6',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2,yAxisID:'y'},{label:'PoP (%)',data:pp,borderColor:'rgba(192,132,252,.5)',backgroundColor:'rgba(192,132,252,.04)',fill:true,tension:.4,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'top',align:'end',labels:{color:'#9898a8',font:{size:9,family:'Inter'},boxWidth:12,boxHeight:2,padding:8}},tooltip:{backgroundColor:'rgba(14,14,21,.95)',titleColor:'#e4e4ec',bodyColor:'#9898a8',borderColor:'rgba(168,85,246,.2)',borderWidth:1,padding:8,cornerRadius:8,callbacks:{label:function(c){return c.datasetIndex===0?' '+c.parsed.y+'°F':' '+c.parsed.y+'%'}}}},scales:{x:{grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#5c5c6e',font:{size:8,family:'Inter'},maxRotation:0,autoSkip:true,maxTicksLimit:8}},y:{position:'left',grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#9898a8',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'°'}}},y1:{position:'right',min:0,max:100,grid:{display:false},ticks:{color:'#5c5c6e',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'%'},stepSize:25}}}}})}
 function rFc(d){var c=document.getElementById('fcL'),al=d.temperature_2m_max.concat(d.temperature_2m_min),mn=Math.min.apply(null,al),mx=Math.max.apply(null,al),rn=mx-mn||1,ht='';for(var i=0;i<d.time.length;i++){var inf=wI(d.weather_code[i],true),lo=d.temperature_2m_min[i],hi=d.temperature_2m_max[i],pop=d.precipitation_probability_max[i]||0,lf=((lo-mn)/rn)*100,wd=((hi-lo)/rn)*100;ht+='<div class="fr"><div class="fd '+(i===0?'to':'')+'">'+gDN(d.time[i])+'</div><div class="fi"><i class="fas '+inf.i+'"></i></div><div class="tbc"><div class="tl2">'+Math.round(lo)+'°</div><div class="tbt"><div class="tbr" style="left:'+lf+'%;width:'+Math.max(wd,4)+'%"></div></div><div class="thi2">'+Math.round(hi)+'°</div></div><div class="fp">'+(pop>0?'<i class="fas fa-droplet"></i>'+pop+'%':'')+'</div></div>'}c.innerHTML=ht}
 function rTh(cu,h){
@@ -5320,6 +5455,10 @@ async function init(){
      bar renders correctly on first paint. */
   spotterModeEnabled=loadSpotterMode();
   applySpotterMode();
+  /* Load Mom Mode from localStorage and apply it (swaps detailed metrics for
+     Rufus the Weather Dog on the Current panel). */
+  momModeEnabled=loadMomMode();
+  applyMomMode();
   /* Restore the saved active county (CUR_LOC) from localStorage so the
      user comes back to the same county they were viewing. */
   try{
