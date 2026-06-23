@@ -3402,8 +3402,236 @@ function renderNowcast(d){
   html+='</div>';
   content.innerHTML=html;
 
+  /* Calculate nowcast CAPE/CIN from the modified profile */
+  var ncCape=calcNowcastCAPE(d.nowcastProfile);
+  d.nowcastCape=ncCape?ncCape.cape:null;
+  d.nowcastCin=ncCape?ncCape.cin:null;
+  d.parcelPath=ncCape?ncCape.parcelPath:null;
+  d.lcl=ncCape?ncCape.lcl:null;
+
+  /* Add nowcast CAPE/CIN cards if available */
+  if(ncCape){
+    var ncGrid=content.querySelector('.nc-grid');
+    var origCape=d.originalCape||0;
+    var deltaCape=ncCape.cape-origCape;
+    var deltaCls=deltaCape>0?'up':'down';
+    ncGrid.innerHTML+='<div class="nc-card"><div class="nc-card-label">Nowcast CAPE</div><div class="nc-card-val" style="color:'+(ncCape.cape>1500?'var(--dng)':ncCape.cape>500?'var(--wrn)':'var(--suc)')+'">'+ncCape.cape+' J/kg</div><div class="nc-card-delta '+deltaCls+'">'+(deltaCape>=0?'+':'')+deltaCape+' vs orig</div></div>';
+    ncGrid.innerHTML+='<div class="nc-card"><div class="nc-card-label">Nowcast CIN</div><div class="nc-card-val" style="color:'+(ncCape.cin>-20?'var(--dng)':ncCape.cin>-100?'var(--wrn)':'var(--suc)')+'">'+ncCape.cin+' J/kg</div><div class="nc-card-sub">'+(ncCape.cin>-20?'Cap nearly eroded':ncCape.cin>-100?'Cap weakening':'Strong cap')+'</div></div>';
+    if(d.lcl){
+      ncGrid.innerHTML+='<div class="nc-card"><div class="nc-card-label">LCL (Nowcast)</div><div class="nc-card-val">'+Math.round(d.lcl.pres)+' hPa</div><div class="nc-card-sub">'+d.lcl.temp.toFixed(1)+'C condensation level</div></div>';
+    }
+  }
+
   renderNowcastChart(d);
   renderNowcastAlerts(d);
+}
+
+/* ── Phase 2: CAPE/CIN Recalculation ────────────────────────────────────────
+   Calculates a new parcel path and CAPE/CIN from the nowcast (modified)
+   profile. Uses simplified thermodynamic equations in JavaScript.
+
+   Algorithm:
+   1. Find LCL (Lifting Condensation Level) from surface temp/dewpoint
+   2. Lift parcel dry adiabatically from surface to LCL
+   3. Lift parcel moist adiabatically from LCL to top of profile
+   4. Integrate CAPE where parcel temp > environmental temp (positive area)
+   5. Integrate CIN where parcel temp < environmental temp below LFC (negative) */
+
+/* Calculate LCL (Lifting Condensation Level) from temperature and dewpoint.
+   Uses the simple approximation: LCL_pres = surface_pres * (T_dew / T_temp)^(3.5)
+   Returns {pres, temp} in hPa and C. */
+function calcLCL(pres, temp, dwpt){
+  if(temp===null||dwpt===null||pres===null)return null;
+  var Tk=temp+273.15;
+  var Tdk=dwpt+273.15;
+  var ratio=Tdk/Tk;
+  var lclPres=pres*Math.pow(ratio,3.5);
+  /* LCL temperature via dry adiabatic ascent */
+  var lclTemp=Tk*Math.pow(lclPres/pres,0.286)-273.15;
+  return{pres:lclPres,temp:lclTemp};
+}
+
+/* Lift a parcel dry adiabatically from (pres1, temp1) to pres2.
+   T2 = T1 * (P2/P1)^0.286 (Poisson's equation) */
+function dryAdiabat(pres1, temp1, pres2){
+  var T1K=temp1+273.15;
+  var T2K=T1K*Math.pow(pres2/pres1,0.286);
+  return T2K-273.15;
+}
+
+/* Lift a parcel moist adiabatically from (pres1, temp1) to pres2.
+   Uses Bolton's equivalent potential temperature (theta_e) conservation,
+   which is conserved along moist adiabats. Iteratively solves for the
+   temperature at the target pressure. */
+function moistAdiabat(pres1, temp1, pres2){
+  /* Calculate theta_e at the starting point (LCL) */
+  var T1K=temp1+273.15;
+  var e1=6.112*Math.exp(17.67*temp1/(temp1+243.5));
+  var w1=0.622*e1/(pres1-e1);  /* kg/kg */
+  var thetaE=T1K*Math.pow(1000/pres1,0.286)*Math.exp((3376/T1K-2.54)*w1);
+
+  /* Iteratively find T at pres2 where theta_e is conserved */
+  var bestT=-80,bestDiff=999;
+  for(var t=-80;t<=40;t+=0.5){
+    var tK=t+273.15;
+    var eT=6.112*Math.exp(17.67*t/(t+243.5));
+    var wT=0.622*eT/(pres2-eT);
+    var teT=tK*Math.pow(1000/pres2,0.286)*Math.exp((3376/tK-2.54)*wT);
+    var diff=Math.abs(teT-thetaE);
+    if(diff<bestDiff){bestDiff=diff;bestT=t}
+  }
+  return bestT;
+}
+
+/* Calculate parcel path and CAPE/CIN for a modified profile.
+   profile = array of {pres, temp, dwpt} (nowcast profile)
+   Returns {parcelPath:[{pres,temp}], cape, cin, lcl, lfc} */
+function calcNowcastCAPE(profile){
+  if(!profile||profile.length<5)return null;
+
+  /* Find surface point (highest pressure with valid temp) */
+  var sfc=null;
+  for(var i=0;i<profile.length;i++){
+    if(profile[i].temp!==null&&!isNaN(profile[i].temp)&&profile[i].pres>=900){
+      sfc=profile[i];
+      break;
+    }
+  }
+  if(!sfc||sfc.dwpt===null)return null;
+
+  /* 1. Calculate LCL */
+  var lcl=calcLCL(sfc.pres,sfc.temp,sfc.dwpt);
+  if(!lcl)return null;
+
+  /* 2. Build parcel path: dry adiabat from surface to LCL,
+     then moist adiabat from LCL to top */
+  var parcelPath=[];
+  /* Add surface point */
+  parcelPath.push({pres:sfc.pres,temp:sfc.temp});
+
+  /* Sort profile by pressure descending (surface to aloft) */
+  var sorted=profile.filter(function(p){return p.temp!==null&&!isNaN(p.temp)}).sort(function(a,b){return b.pres-a.pres});
+
+  /* Dry adiabatic ascent from surface to LCL */
+  for(var i=0;i<sorted.length;i++){
+    if(sorted[i].pres<lcl.pres&&sorted[i].pres>=sfc.pres)continue;
+    if(sorted[i].pres<lcl.pres){
+      /* Above LCL - moist adiabat */
+      var pTemp=moistAdiabat(lcl.pres,lcl.temp,sorted[i].pres);
+      parcelPath.push({pres:sorted[i].pres,temp:pTemp});
+    }else if(sorted[i].pres<sfc.pres){
+      /* Below LCL, above surface - dry adiabat */
+      var dTemp=dryAdiabat(sfc.pres,sfc.temp,sorted[i].pres);
+      parcelPath.push({pres:sorted[i].pres,temp:dTemp});
+    }
+  }
+
+  /* Also add the LCL point itself */
+  var lclAdded=false;
+  for(var i=0;i<parcelPath.length;i++){
+    if(Math.abs(parcelPath[i].pres-lcl.pres)<5){
+      lclAdded=true;
+      break;
+    }
+  }
+  if(!lclAdded){
+    parcelPath.push({pres:lcl.pres,temp:lcl.temp});
+    parcelPath.sort(function(a,b){return b.pres-a.pres});
+  }
+
+  /* 3. Find LFC (Level of Free Convection) - first level above LCL
+     where parcel temp >= environmental temp */
+  var lfc=null;
+  for(var i=0;i<sorted.length;i++){
+    if(sorted[i].pres>=lcl.pres)continue;
+    /* Find corresponding parcel temp */
+    var pTemp=null;
+    for(var j=0;j<parcelPath.length;j++){
+      if(Math.abs(parcelPath[j].pres-sorted[i].pres)<10){
+        pTemp=parcelPath[j].temp;
+        break;
+      }
+    }
+    if(pTemp!==null&&pTemp>=sorted[i].temp){
+      lfc={pres:sorted[i].pres,temp:sorted[i].temp};
+      break;
+    }
+  }
+
+  /* 4. Integrate CAPE and CIN using the trapezoidal rule.
+     CAPE = integral of g * (T_parcel - T_env) / T_env * dp  (positive area)
+     CIN = integral of g * (T_parcel - T_env) / T_env * dp  (negative area, below LFC) */
+  var cape=0,cin=0;
+  var g=9.81,Rd=287.05;
+
+  /* Create a combined list of pressure levels (from surface to top) */
+  var levels=[];
+  for(var i=0;i<sorted.length;i++){
+    var envTemp=sorted[i].temp;
+    /* Find parcel temp at this pressure via interpolation */
+    var pTemp=null;
+    if(parcelPath.length>0){
+      /* Sort parcel path by pressure descending */
+      var pp=parcelPath.slice().sort(function(a,b){return b.pres-a.pres});
+      /* Find bracketing points */
+      for(var j=0;j<pp.length-1;j++){
+        if(pp[j].pres>=sorted[i].pres&&pp[j+1].pres<=sorted[i].pres){
+          var frac=(pp[j].pres-sorted[i].pres)/(pp[j].pres-pp[j+1].pres);
+          pTemp=pp[j].temp+(pp[j+1].temp-pp[j].temp)*frac;
+          break;
+        }
+      }
+      /* If no bracket found, use nearest */
+      if(pTemp===null){
+        var bestDiff=999;
+        for(var j=0;j<pp.length;j++){
+          var diff=Math.abs(pp[j].pres-sorted[i].pres);
+          if(diff<bestDiff){bestDiff=diff;pTemp=pp[j].temp}
+        }
+      }
+    }
+    if(pTemp!==null){
+      var envTempK=envTemp+273.15;
+      var buoyancy=g*(pTemp-envTemp)/envTempK;
+      levels.push({pres:sorted[i].pres,buoyancy:buoyancy,envTemp:envTemp,parcelTemp:pTemp});
+    }
+  }
+
+  /* Integrate using trapezoidal rule.
+     CAPE = -integral of (Rd/p) * (T_parcel - T_env) * dp  (positive area)
+     Using dp in Pa and the virtual temperature approximation. */
+  for(var i=1;i<levels.length;i++){
+    var dp=levels[i-1].pres-levels[i].pres;  /* hPa (positive, going up) */
+    var dpPa=dp*100;  /* convert hPa to Pa */
+    var avgPres=(levels[i-1].pres+levels[i].pres)/2*100;  /* avg pressure in Pa */
+    var avgBuoy=(levels[i].buoyancy+levels[i-1].buoyancy)/2;
+    /* CAPE = integral of buoyancy * dz = integral of (g*(Tp-Te)/Te) * (-Rd*T/p) * dp */
+    /* Simplified: contribution = avgBuoy * dpPa / (avgPres/avgTempK) */
+    /* Actually the simplest correct form: CAPE = -integral(Rd*(Tp-Te)/p) dp */
+    /* where buoyancy = g*(Tp-Te)/Te, and dz = -(Rd*Te/g/p)*dp */
+    /* so CAPE contribution = buoyancy * dz = (g*(Tp-Te)/Te) * (Rd*Te/g/p) * dp = Rd*(Tp-Te)/p * dp */
+    var avgTempK=((levels[i].envTemp+273.15)+(levels[i-1].envTemp+273.15))/2;
+    var tempDiff=levels[i].parcelTemp-levels[i-1].parcelTemp;  /* not used */
+    /* Direct: contribution = Rd * (Tp - Te) / p * dp */
+    var avgTpDiff=((levels[i].parcelTemp-levels[i].envTemp)+(levels[i-1].parcelTemp-levels[i-1].envTemp))/2;
+    var contribution=Rd*avgTpDiff/avgPres*dpPa;
+    if(contribution>0){
+      if(levels[i].pres<lcl.pres)cape+=contribution;
+    }else{
+      if(lfc===null||levels[i].pres>=lfc.pres)cin+=contribution;
+    }
+  }
+
+  /* CIN is negative (inhibition), so keep the sign */
+  cin=Math.min(cin,0);
+
+  return{
+    parcelPath:parcelPath,
+    cape:Math.round(cape),
+    cin:Math.round(cin),
+    lcl:lcl,
+    lfc:lfc
+  };
 }
 
 function renderNowcastChart(d){
@@ -3413,17 +3641,36 @@ function renderNowcastChart(d){
   var nc=d.nowcastProfile.filter(function(p){return p.temp!==null&&!isNaN(p.temp)});
   if(!orig.length||!nc.length){canvas.parentElement.innerHTML='<div class="lt">No profile data</div>';return}
 
+  /* Build datasets - include parcel path if available */
+  var datasets=[
+    {label:'Orig Temp (C)',data:orig.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'rgba(251,113,133,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
+    {label:'Orig Dewpt (C)',data:orig.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'rgba(52,211,153,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
+    {label:'Nowcast Temp (C)',data:nc.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'#fb7185',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'},
+    {label:'Nowcast Dewpt (C)',data:nc.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'#34d399',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'}
+  ];
+
+  /* Add parcel path as dashed yellow/amber line */
+  if(d.parcelPath&&d.parcelPath.length>2){
+    var pp=d.parcelPath.slice().sort(function(a,b){return b.pres-a.pres});
+    datasets.push({
+      label:'Parcel Path (C)',
+      data:pp.map(function(p){return{x:p.temp,y:p.pres}}),
+      borderColor:'#fbbf24',
+      backgroundColor:'rgba(251,191,36,.08)',
+      fill:{target:'+1',above:'rgba(251,191,36,.10)'},
+      tension:.3,
+      borderWidth:1.5,
+      borderDash:[6,3],
+      pointRadius:0,
+      pointHoverRadius:4,
+      yAxisID:'y'
+    });
+  }
+
   if(ncCh)ncCh.destroy();
   ncCh=new Chart(canvas.getContext('2d'),{
     type:'line',
-    data:{
-      datasets:[
-        {label:'Orig Temp (C)',data:orig.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'rgba(251,113,133,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
-        {label:'Orig Dewpt (C)',data:orig.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'rgba(52,211,153,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
-        {label:'Nowcast Temp (C)',data:nc.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'#fb7185',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'},
-        {label:'Nowcast Dewpt (C)',data:nc.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'#34d399',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'}
-      ]
-    },
+    data:{datasets:datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
@@ -3447,31 +3694,46 @@ function renderNowcastAlerts(d){
   if(!el)return;
   var alerts=[];
 
-  if(d.originalCape&&d.originalCape>1500&&d.originalCin&&d.originalCin>-20){
-    alerts.push({cls:'danger',icon:'fa-tornado',text:'[ALERT] Explosive environment developing over SW Michigan. CAPE='+Math.round(d.originalCape)+'J/kg, CIN='+Math.round(d.originalCin)+'J/kg. Cap nearly eroded.'});
+  /* Use nowcast CAPE/CIN if available, otherwise fall back to original */
+  var cape=d.nowcastCape!==null?d.nowcastCape:d.originalCape;
+  var cin=d.nowcastCin!==null?d.nowcastCin:d.originalCin;
+  var capeLabel=d.nowcastCape!==null?'Nowcast':'Original';
+
+  /* Severe storm potential: CAPE > 1500 and CIN > -20 (cap nearly eroded) */
+  if(cape&&cape>1500&&cin&&cin>-20){
+    alerts.push({cls:'danger',icon:'fa-tornado',text:'[ALERT] Explosive environment developing over SW Michigan. '+capeLabel+' CAPE='+cape+'J/kg, CIN='+cin+'J/kg. Cap nearly eroded.'});
   }
 
-  if(d.originalCin&&d.originalCin<-50&&d.surfaceMetar){
+  /* Cap eroding: CIN was strongly negative but surface warming may erode it */
+  if(cin&&cin<-50&&d.surfaceMetar){
     var tempF=d.surfaceMetar.temp*9/5+32;
     if(tempF>75){
-      alerts.push({cls:'warning',icon:'fa-temperature-arrow-up',text:'[WARNING] Surface temp '+Math.round(tempF)+'F may erode the cap (CIN='+Math.round(d.originalCin)+'J/kg). Monitor for convective initiation.'});
+      alerts.push({cls:'warning',icon:'fa-temperature-arrow-up',text:'[WARNING] Surface temp '+Math.round(tempF)+'F may erode the cap ('+capeLabel+' CIN='+cin+'J/kg). Monitor for convective initiation.'});
     }
   }
 
+  /* Lake breeze boundary: shoreline vs inland dewpoint difference > 5F */
   if(d.lakeBreeze&&d.lakeBreeze.diff&&d.lakeBreeze.diff>2.8){
     var shoreSide=d.lakeBreeze.shoreWarmer?'shoreline (LWA) warmer':'inland (KAZO) warmer';
     alerts.push({cls:'info',icon:'fa-water',text:'[INFO] Sharp moisture gradient near Lake Michigan shoreline. '+d.lakeBreeze.diff.toFixed(1)+'F dewpoint difference ('+shoreSide+'). Lake breeze boundary may trigger convection.'});
   }
 
-  if(d.originalCape&&d.originalCape>1000&&d.surfaceMetar&&d.surfaceMetar.dwpt!==null){
+  /* High CAPE with moisture */
+  if(cape&&cape>1000&&d.surfaceMetar&&d.surfaceMetar.dwpt!==null){
     var dwptF=d.surfaceMetar.dwpt*9/5+32;
     if(dwptF>60){
-      alerts.push({cls:'warning',icon:'fa-cloud-bolt',text:'[WARNING] CAPE='+Math.round(d.originalCape)+'J/kg with surface dewpoint '+Math.round(dwptF)+'F. Sufficient moisture and instability for thunderstorm development.'});
+      alerts.push({cls:'warning',icon:'fa-cloud-bolt',text:'[WARNING] '+capeLabel+' CAPE='+cape+'J/kg with surface dewpoint '+Math.round(dwptF)+'F. Sufficient moisture and instability for thunderstorm development.'});
     }
   }
 
-  if((!d.originalCape||d.originalCape<100)&&alerts.length===0){
-    alerts.push({cls:'stable',icon:'fa-check-circle',text:'[STABLE] No significant threat detected. CAPE low, atmosphere stable.'});
+  /* Nowcast CAPE significantly higher than original (instability increasing) */
+  if(d.nowcastCape!==null&&d.originalCape!==null&&d.nowcastCape>d.originalCape+500){
+    alerts.push({cls:'warning',icon:'fa-arrow-trend-up',text:'[WARNING] Instability increasing. Nowcast CAPE ('+d.nowcastCape+'J/kg) is '+Math.round(d.nowcastCape-d.originalCape)+'J/kg higher than 12Z sounding ('+d.originalCape+'J/kg).'});
+  }
+
+  /* Stable - low CAPE */
+  if((!cape||cape<100)&&alerts.length===0){
+    alerts.push({cls:'stable',icon:'fa-check-circle',text:'[STABLE] No significant threat detected. '+capeLabel+' CAPE low, atmosphere stable.'});
   }
 
   if(alerts.length===0){
