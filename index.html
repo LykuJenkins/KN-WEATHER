@@ -1269,11 +1269,14 @@ function switchTab(tabId){
     if(pane.id==='tabpane-fb')return;  /* footer is always visible */
     pane.classList.toggle('active',pane.id==='tabpane-'+tabId);
   });
-  /* County location tabs only make sense on Current Conditions (where the
-     per-location panels live). Hide them on NWS/SPC/Storm Spotting since
-     those tabs are county-agnostic. */
+  /* County location tabs are visible on tabs that have per-location panels:
+     - Current Conditions: Current, Hourly, 7-Day, Threats, Meteo, etc.
+     - NWS: Hourly Forecast Graph, NWS Gridpoint Forecast, Observations &
+       Forecast Text, Precipitation & Temperature Outlook (all use CUR_LOC_OBJ)
+     Hidden on SPC and Storm Spotting since those tabs are county-agnostic. */
   var locTabs=document.getElementById('locTabs');
-  if(locTabs)locTabs.style.display=(tabId==='current')?'':'none';
+  var showLocTabs=(tabId==='current'||tabId==='nws');
+  if(locTabs)locTabs.style.display=showLocTabs?'':'none';
   /* Save to localStorage so refresh restores the same tab */
   try{localStorage.setItem(TAB_STORAGE_KEY,tabId)}catch(e){}
   /* If switching to Current Conditions tab, force Leaflet to recompute size
@@ -1304,9 +1307,12 @@ function loadSavedTab(){
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     btn.classList.toggle('on',btn.dataset.tab===activeTab);
   });
-  /* Apply county-tab visibility based on the restored active tab */
+  /* Apply county-tab visibility based on the restored active tab.
+     County tabs show on Current Conditions and NWS (both have per-location
+     panels that use CUR_LOC_OBJ). Hidden on SPC and Storm Spotting. */
   var locTabs=document.getElementById('locTabs');
-  if(locTabs)locTabs.style.display=(activeTab==='current')?'':'none';
+  var showLocTabs=(activeTab==='current'||activeTab==='nws');
+  if(locTabs)locTabs.style.display=showLocTabs?'':'none';
 }
 
 /* ── Build SPC day tabs from SPC_DAYS ──────────────────────────────────────── */
