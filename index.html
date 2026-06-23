@@ -526,6 +526,25 @@ body.capturing .mom-mode-toggle{display:none}
 .senv-summary-val{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--t1);line-height:1.2}
 .senv-summary-desc{font-size:9px;color:var(--t3);margin-top:4px;line-height:1.3}
 .senv-summary-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;text-transform:uppercase;margin-top:4px}
+/* Key Level Summaries - individual data points at standard pressure levels */
+.senv-levels{margin-top:12px;padding:12px;background:rgba(255,255,255,.02);border:1px solid var(--bdr);border-radius:var(--rs)}
+.senv-levels-title{font-size:10px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.senv-levels-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.senv-level-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px;border-left:3px solid var(--bdr)}
+.senv-level-card.saturated{border-left-color:var(--dng)}
+.senv-level-card.humid{border-left-color:var(--wrn)}
+.senv-level-card.moderate{border-left-color:var(--acc)}
+.senv-level-card.dry{border-left-color:var(--suc)}
+.senv-level-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.senv-level-pres{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--t1)}
+.senv-level-alt{font-size:9px;color:var(--t3);font-family:'JetBrains Mono',monospace}
+.senv-level-row{display:flex;justify-content:space-between;font-size:9px;margin:2px 0}
+.senv-level-label{color:var(--t3)}
+.senv-level-val{font-family:'JetBrains Mono',monospace;font-weight:600}
+.senv-level-temp{color:#fb7185}
+.senv-level-dwpt{color:#34d399}
+.senv-level-rh{color:var(--acc)}
+.senv-level-moisture{font-size:8px;font-weight:700;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:3px;display:inline-block}
 .sndenv-cat:first-of-type{margin-top:0}
 
 /* WWA Summary panel */
@@ -1202,7 +1221,7 @@ var PANELS=[
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
-    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div id="senvSummary"></div><div class="senv-help"><div class="senv-help-title"><i class="fas fa-circle-info"></i> How to Read This Chart</div><div class="senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div>'
+    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div id="senvLevels"></div><div id="senvSummary"></div><div class="senv-help"><div class="senv-help-title"><i class="fas fa-circle-info"></i> How to Read This Chart</div><div class="senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
@@ -3107,9 +3126,11 @@ function parseWyomingSounding(text){
     var pres=parseFloat(parts[0]);
     var temp=parts[2]!==''?parseFloat(parts[2]):null;
     var dwpt=parts[3]!==''?parseFloat(parts[3]):null;
-    /* Only include rows with valid pressure and at least temp or dewpoint */
-    if(!isNaN(pres)&&pres>0&&(temp!==null||dwpt!==null)){
-      result.profile.push({pres:pres,temp:temp,dwpt:dwpt});
+    /* Only include rows with valid pressure and valid numeric temp */
+    var tempVal=isNaN(temp)?null:temp;
+    var dwptVal=isNaN(dwpt)?null:dwpt;
+    if(!isNaN(pres)&&pres>0&&tempVal!==null){
+      result.profile.push({pres:pres,temp:tempVal,dwpt:dwptVal});
     }
   }
   return result;
@@ -3333,8 +3354,94 @@ function renderSoundingChart(d){
       }
     }
   });
-  /* After rendering the chart, compute and display the summary analysis */
+  /* After rendering the chart, compute and display the key level summaries
+     and the overall summary analysis */
+  renderKeyLevels(d.profile);
   renderSoundingSummary(d.profile);
+}
+
+/* Render key level summaries at standard pressure levels.
+   Shows temp, dew point, relative humidity, altitude, and moisture status
+   for: Surface (highest pressure), 925, 850, 700, 500 hPa.
+   Finds the closest available data point to each standard level. */
+function renderKeyLevels(profile){
+  var container=document.getElementById('senvLevels');
+  if(!container)return;
+  if(!profile||!profile.length){container.innerHTML='';return}
+
+  /* Standard pressure levels to display (in order from surface to aloft) */
+  var targetLevels=[1000,925,850,700,500];
+  var labels={1000:'Surface',925:'925 hPa',850:'850 hPa',700:'700 hPa',500:'500 hPa'};
+
+  /* For each target level, find the closest data point in the profile */
+  function findClosest(target){
+    var best=null,bestDiff=999;
+    for(var i=0;i<profile.length;i++){
+      if(profile[i].temp===null||isNaN(profile[i].temp))continue;
+      var diff=Math.abs(profile[i].pres-target);
+      if(diff<bestDiff){bestDiff=diff;best=profile[i]}
+    }
+    /* Only use if within 20 hPa of the target level (widened for surface
+       where the first real data point might be at ~981 hPa) */
+    return (best&&bestDiff<=20)?best:null;
+  }
+
+  /* Convert pressure to approximate altitude in feet */
+  function presToAltFt(pres){
+    return Math.round(44330*(1-Math.pow(pres/1013.25,0.1903))*3.28084);
+  }
+
+  /* Calculate relative humidity from temp and dewpoint (both in C) */
+  function calcRH(temp,dwpt){
+    if(temp===null||dwpt===null)return null;
+    /* RH = 100 * exp((17.625*Td)/(243.04+Td) - (17.625*T)/(243.04+T)) */
+    var a=17.625,b=243.04;
+    return Math.round(100*Math.exp((a*dwpt)/(b+dwpt)-(a*temp)/(b+temp)));
+  }
+
+  /* Determine moisture status from dewpoint depression */
+  function moistureStatus(dep){
+    if(dep<=2)return{cls:'saturated',text:'Saturated',color:'var(--dng)'};
+    if(dep<=5)return{cls:'humid',text:'Humid',color:'var(--wrn)'};
+    if(dep<=10)return{cls:'moderate',text:'Moderate',color:'var(--acc)'};
+    return{cls:'dry',text:'Dry',color:'var(--suc)'};
+  }
+
+  var html='<div class="senv-levels">';
+  html+='<div class="senv-levels-title"><i class="fas fa-layer-group"></i> Key Level Summaries</div>';
+  html+='<div class="senv-levels-grid">';
+
+  var hasAny=false;
+  targetLevels.forEach(function(target){
+    var pt=findClosest(target);
+    if(!pt)return;
+    hasAny=true;
+    var label=labels[target];
+    var altFt=presToAltFt(pt.pres);
+    var rh=calcRH(pt.temp,pt.dwpt);
+    var dep=pt.dwpt!==null?pt.temp-pt.dwpt:null;
+    var moist=dep!==null?moistureStatus(dep):{cls:'',text:'N/A',color:'var(--t3)'};
+    var tempF=Math.round(pt.temp*9/5+32);
+    var dwptF=pt.dwpt!==null?Math.round(pt.dwpt*9/5+32):null;
+
+    html+='<div class="senv-level-card '+moist.cls+'">';
+    html+='<div class="senv-level-header"><div class="senv-level-pres">'+label+'</div><div class="senv-level-alt">'+altFt+' ft</div></div>';
+    html+='<div class="senv-level-row"><span class="senv-level-label">Temp</span><span class="senv-level-val senv-level-temp">'+pt.temp.toFixed(1)+'C / '+tempF+'F</span></div>';
+    if(pt.dwpt!==null){
+      html+='<div class="senv-level-row"><span class="senv-level-label">Dew Pt</span><span class="senv-level-val senv-level-dwpt">'+pt.dwpt.toFixed(1)+'C / '+dwptF+'F</span></div>';
+    }
+    if(rh!==null){
+      html+='<div class="senv-level-row"><span class="senv-level-label">RH</span><span class="senv-level-val senv-level-rh">'+rh+'%</span></div>';
+    }
+    if(dep!==null){
+      html+='<div class="senv-level-row"><span class="senv-level-label">Depression</span><span class="senv-level-val">'+dep.toFixed(1)+'C</span></div>';
+    }
+    html+='<div class="senv-level-moisture" style="background:'+moist.color+'22;color:'+moist.color+'">'+moist.text+'</div>';
+    html+='</div>';
+  });
+
+  html+='</div></div>';
+  container.innerHTML=hasAny?html:'';
 }
 
 /* Analyze the sounding profile data and output a plain-language summary.
