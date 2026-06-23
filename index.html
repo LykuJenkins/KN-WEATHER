@@ -1221,7 +1221,7 @@ var PANELS=[
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
-    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div id="senvLevels"></div><div id="senvSummary"></div><div class="senv-help"><div class="senv-help-title"><i class="fas fa-circle-info"></i> How to Read This Chart</div><div class="senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div>'
+    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div><div class="senv-help collapsible collapsed" id="senvHelpToggle"><div class="senv-help-title collapse-toggle"><i class="fas fa-circle-info"></i> How to Read This Chart<i class="fas fa-chevron-down collapse-icon"></i></div><div class="collapse-body senv-help-grid"><div class="senv-help-item"><div class="senv-help-dot" style="background:#fb7185"></div><div><b>Red line = Temperature</b><br>Drops with altitude = unstable air (favors storms). Warms with altitude = inversion (stable, traps haze/pollution).</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:#34d399"></div><div><b>Green line = Dew Point</b><br>Shows moisture at each level. Close to red line = saturated (clouds/fog likely). Far apart = dry air.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(251,113,133,.3);border:1px solid #fb7185"></div><div><b>Gap between lines = Moisture</b><br>Wide gap = dry, stable air. Narrow gap = humid, potential for clouds and precipitation.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:linear-gradient(135deg,#fb7185,#34d399)"></div><div><b>Steep drop = Instability</b><br>When the red line drops quickly with altitude, air is unstable and thunderstorms can develop if moisture is present.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(255,255,255,.1);border:1px dashed #9898a8"></div><div><b>Y-axis = Pressure (hPa)</b><br>Inverted: 1000 hPa (surface) at bottom, ~100 hPa (high altitude) at top. Lower pressure = higher altitude.</div></div><div class="senv-help-item"><div class="senv-help-dot" style="background:rgba(168,85,246,.2);border:1px solid var(--acc)"></div><div><b>Source: Radiosonde Sounding</b><br>Data from weather balloons launched every 12 hours (00Z and 12Z). Shows actual atmospheric conditions.</div></div></div></div><div id="senvLevels"></div><div id="senvSummary"></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
@@ -3284,8 +3284,45 @@ function renderSoundingChart(d){
     return;
   }
   if(senvCh)senvCh.destroy();
+  /* Key level ranges for shaded bands on the chart. Each band shows the
+     pressure range for a standard level. Colors are subtle so they don't
+     interfere with reading the temp/dwpt lines. */
+  var levelBands=[
+    {min:1000,max:960,label:'SFC',color:'rgba(251,113,133,.06)'},
+    {min:960,max:880,label:'925',color:'rgba(251,191,36,.06)'},
+    {min:880,max:780,label:'850',color:'rgba(168,85,246,.06)'},
+    {min:780,max:620,label:'700',color:'rgba(52,211,153,.06)'},
+    {min:620,max:420,label:'500',color:'rgba(96,165,250,.06)'}
+  ];
+  /* Custom plugin to draw the shaded bands on the chart background */
+  var levelBandsPlugin={
+    id:'levelBands',
+    beforeDraw:function(chart){
+      var ctx=chart.ctx;
+      var yAxis=chart.scales.y;
+      if(!yAxis)return;
+      var chartArea=chart.chartArea;
+      levelBands.forEach(function(band){
+        /* Get pixel positions for the pressure range. Y-axis is reversed
+           (high pressure at bottom), so we use getPixelForValue. */
+        var yMin=yAxis.getPixelForValue(band.min);
+        var yMax=yAxis.getPixelForValue(band.max);
+        var top=Math.min(yMin,yMax);
+        var bottom=Math.max(yMin,yMax);
+        /* Draw the shaded rectangle */
+        ctx.fillStyle=band.color;
+        ctx.fillRect(chartArea.left,top,chartArea.right-chartArea.left,bottom-top);
+        /* Draw a label at the right edge of the band */
+        ctx.fillStyle='rgba(255,255,255,.15)';
+        ctx.font='8px JetBrains Mono';
+        ctx.textAlign='right';
+        ctx.fillText(band.label,chartArea.right-4,top+10);
+      });
+    }
+  };
   senvCh=new Chart(canvas.getContext('2d'),{
     type:'line',
+    plugins:[levelBandsPlugin],
     data:{
       labels:pres.map(function(p){return Math.round(p)}),
       datasets:[
