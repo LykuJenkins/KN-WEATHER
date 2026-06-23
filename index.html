@@ -1041,7 +1041,14 @@ var PANELS=[
     updateId:'upd-cur',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="hero"><div class="ci" id="cIco"><i class="fas fa-cloud-sun"></i></div><div class="tmp" id="cTmp">--&deg;F</div><div class="fl" id="cFl">Feels like --&deg;F</div><div class="cd" id="cCd">Loading...</div><div class="nws-line" id="nwsLine" style="display:none"><strong>NWS:</strong> <span id="nwsTxt"></span></div></div><div class="dg"><div class="di"><div class="dl">Humidity</div><div class="dv" id="dHu">--<span class="du">%</span></div></div><div class="di"><div class="dl">Dew Point</div><div class="dv" id="dDw">--<span class="du">&deg;F</span></div></div><div class="di"><div class="dl">Wind</div><div class="dv" id="dWi">--<span class="du">mph</span></div></div><div class="di"><div class="dl">Pressure</div><div class="dv" id="dPr">--<span class="du">inHg</span></div></div></div><div class="rufus-container" id="rufusContainer"><div class="rufus-label">Rufus the Weather Dog</div><img class="rufus-img" id="rufusImg" src="./rufus/default.jpg" alt="Rufus the Weather Dog"><div class="rufus-caption" id="rufusCaption">Rufus is checking the sky...</div></div>'
   },
-  /* 2. Hourly Forecast */
+  /* 2. KN Nowcast (user-friendly summary on Current Conditions tab) */
+  {
+    id:'knNowcast',title:'KN Nowcast',icon:'fa-bolt-lightning',
+    badge:'LIVE',badgeClass:'cb-l',gridClass:'g2',
+    updateId:'upd-knnc',refreshFn:'fKnNowcast',collapsible:true,tab:'current',
+    body:'<div id="knNcContent"><div class="lt"><i class="fas fa-spinner"></i> Loading nowcast...</div></div>'
+  },
+  /* 3. Hourly Forecast */
   {
     id:'hourly',title:'Hourly Forecast',icon:'fa-chart-line',
     badge:'Updating',badgeClass:'cb-u',gridClass:'g2',
@@ -1268,13 +1275,6 @@ var PANELS=[
     badge:'MiDrive',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'current',
     body:'<div id="rcGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>'
-  },
-  /* 20b. KN Nowcast (user-friendly summary on Current Conditions tab) */
-  {
-    id:'knNowcast',title:'KN Nowcast',icon:'fa-bolt-lightning',
-    badge:'LIVE',badgeClass:'cb-l',gridClass:'g2',
-    updateId:'upd-knnc',refreshFn:'fKnNowcast',collapsible:true,tab:'current',
-    body:'<div id="knNcContent"><div class="lt"><i class="fas fa-spinner"></i> Loading nowcast...</div></div>'
   },
   /* 21. Facebook (responsive, always last) */
   {
