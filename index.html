@@ -541,7 +541,12 @@ body.capturing .wwas-item-actions{display:none!important}
 /* Alert Polygon Map panel (Leaflet) */
 .alert-map-wrap{position:relative;border:1px solid var(--bdr);border-radius:var(--rs);overflow:hidden}
 #alertMap{height:700px;width:100%;background:#0a0a12;z-index:1}
-.alert-map-legend{position:absolute;bottom:10px;left:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:8px 10px;font-size:9px;color:var(--t2);backdrop-filter:blur(12px);max-height:300px;overflow-y:auto}
+.alert-map-legend{position:absolute;bottom:10px;left:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;font-size:9px;color:var(--t2);backdrop-filter:blur(12px);max-height:300px;overflow-y:auto;max-width:200px}
+.alert-map-legend-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;cursor:pointer;font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;user-select:none}
+.alert-map-legend-toggle i{transition:transform .2s}
+.alert-map-legend.collapsed .alert-map-legend-toggle i{transform:rotate(-90deg)}
+.alert-map-legend-body{padding:0 10px 8px 10px;display:block}
+.alert-map-legend.collapsed .alert-map-legend-body{display:none}
 .alert-map-legend-title{font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
 .alert-map-legend-item{display:flex;align-items:center;gap:6px;margin:2px 0}
 .alert-map-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
@@ -2980,8 +2985,10 @@ function initAlertMap(){
       {c:'#708090',l:'Dense Fog Advisory'},
       {c:'#FF7F50',l:'Heat Advisory'}
     ];
-    legend.innerHTML='<div class="alert-map-legend-title">Alert Colors</div>'+
-      items.map(function(i){return '<div class="alert-map-legend-item"><div class="alert-map-legend-dot" style="background:'+i.c+'"></div>'+i.l+'</div>'}).join('');
+    legend.innerHTML='<div class="alert-map-legend-toggle" onclick="var l=document.getElementById(\'alertMapLegend\');l.classList.toggle(\'collapsed\')"><span><i class="fas fa-palette"></i> Alert Colors</span><i class="fas fa-chevron-down"></i></div>'+
+      '<div class="alert-map-legend-body">'+
+      items.map(function(i){return '<div class="alert-map-legend-item"><div class="alert-map-legend-dot" style="background:'+i.c+'"></div>'+i.l+'</div>'}).join('')+
+      '</div>';
   }
 }
 
