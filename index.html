@@ -2402,6 +2402,103 @@ async function fWx(){
     var hBdg=document.getElementById('hourlyBdg');
     if(hBdg){hBdg.textContent='Live';hBdg.className='cb cb-l'}
   }catch(e){document.getElementById('cCd').textContent='Data unavailable'}
+  /* Fetch NWS observation data for the current location and override the
+     Open-Meteo current values with actual NWS station observations. This
+     makes the Current panel match what NWS reports for the zone.
+     Falls back silently to Open-Meteo data if NWS observation is unavailable.
+     Uses the NWS /points API to get the grid, then /gridpoints/.../stations
+     to find the nearest observation station, then /stations/.../observations
+     to get the latest reading. */
+  fetchNwsObservation(CUR_LOC_OBJ);
+}
+
+/* Fetch the nearest NWS observation station's latest observation for the
+   given location and update the Current panel with real NWS data.
+   Step 1: /points/{lat},{lon} -> get gridId, gridX, gridY
+   Step 2: /gridpoints/{office}/{x},{y}/stations -> get nearest station ID
+   Step 3: /stations/{id}/observations?limit=1 -> get latest observation
+   Then update temperature, dew point, wind, humidity, pressure with NWS
+   values. Falls back silently to Open-Meteo data on any error. */
+async function fetchNwsObservation(loc){
+  if(!loc)return;
+  try{
+    /* Step 1: Get grid info from NWS points API */
+    var pr=await Promise.race([fetch(url.points(loc),{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+    if(!pr.ok)return;
+    var pd=await pr.json();
+    var gridId=pd.properties.gridId;
+    var gridX=pd.properties.gridX;
+    var gridY=pd.properties.gridY;
+    /* Step 2: Get nearest observation stations */
+    var sr=await Promise.race([fetch('https://api.weather.gov/gridpoints/'+gridId+'/'+gridX+','+gridY+'/stations',{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+    if(!sr.ok)return;
+    var sd=await sr.json();
+    var stations=sd.features||[];
+    if(!stations.length)return;
+    /* Try each station (up to 3) until we get a valid observation */
+    for(var si=0;si<Math.min(3,stations.length);si++){
+      var stationId=stations[si].properties.stationIdentifier;
+      try{
+        var or=await Promise.race([fetch('https://api.weather.gov/stations/'+stationId+'/observations?limit=1',{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+        if(!or.ok)continue;
+        var od=await or.json();
+        var obs=od.features&&od.features[0];
+        if(!obs||!obs.properties)continue;
+        var p=obs.properties;
+        /* Only use the observation if it's less than 1 hour old */
+        var obsTime=new Date(p.timestamp);
+        if(Date.now()-obsTime.getTime()>60*60*1000)continue;
+        /* Update the Current panel with NWS observation data.
+           NWS returns values in metric units (Celsius, km/h, hPa, meters).
+           Convert to the same units Open-Meteo uses (Fahrenheit, mph, inHg). */
+        if(p.temperature&&p.temperature.value!=null){
+          document.getElementById('cTmp').textContent=Math.round(p.temperature.value*9/5+32)+'°F';
+        }
+        if(p.dewpoint&&p.dewpoint.value!=null){
+          document.getElementById('dDw').innerHTML=Math.round(p.dewpoint.value*9/5+32)+'<span class="du">°F</span>';
+        }
+        if(p.windSpeed&&p.windSpeed.value!=null){
+          var windMph=Math.round(p.windSpeed.value*0.621371);
+          var windDir=p.windDirection&&p.windDirection.value!=null?' '+d2c(p.windDirection.value):'';
+          document.getElementById('dWi').innerHTML=windMph+windDir+' <span class="du">mph</span>';
+          /* Update Rufus if Mom Mode is on - wind may have changed */
+          if(typeof lastCurrentConditions!=='undefined'&&lastCurrentConditions){
+            lastCurrentConditions.wind_speed_10m=windMph/2.23694;  /* store back as m/s for consistency */
+            if(document.body.classList.contains('mom-mode')){
+              var rufus=getRufusForWeather(lastCurrentConditions.weather_code,windMph);
+              var rufusImg=document.getElementById('rufusImg');
+              var rufusCap=document.getElementById('rufusCaption');
+              if(rufusImg){rufusImg.src='./rufus/'+rufus.img}
+              if(rufusCap){rufusCap.innerHTML='<strong>'+rufus.caption+'</strong>'}
+            }
+          }
+        }
+        if(p.relativeHumidity&&p.relativeHumidity.value!=null){
+          document.getElementById('dHu').innerHTML=Math.round(p.relativeHumidity.value)+'<span class="du">%</span>';
+        }
+        if(p.barometricPressure&&p.barometricPressure.value!=null){
+          /* NWS returns pressure in Pascals; convert to hPa (÷100) then to inHg via h2i */
+          document.getElementById('dPr').innerHTML=h2i(p.barometricPressure.value/100)+'<span class="du">inHg</span>';
+        }
+        if(p.windGust&&p.windGust.value!=null){
+          /* NWS observation includes gust - update Rufus wind check with gust if higher */
+          var gustMph=Math.round(p.windGust.value*0.621371);
+          if(gustMph>=20&&document.body.classList.contains('mom-mode')&&typeof lastCurrentConditions!=='undefined'&&lastCurrentConditions){
+            var rufus=getRufusForWeather(lastCurrentConditions.weather_code,gustMph);
+            var rufusImg=document.getElementById('rufusImg');
+            var rufusCap=document.getElementById('rufusCaption');
+            if(rufusImg){rufusImg.src='./rufus/'+rufus.img}
+            if(rufusCap){rufusCap.innerHTML='<strong>'+rufus.caption+'</strong>'}
+          }
+        }
+        /* Success - stop trying other stations */
+        return;
+      }catch(e){/* try next station */}
+    }
+  }catch(e){
+    /* NWS observation fetch failed - silently keep Open-Meteo data */
+    console.debug('NWS observation unavailable, using Open-Meteo data');
+  }
 }
 var lastCurrentConditions=null;
 function rCu(c){
