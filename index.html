@@ -650,12 +650,12 @@ body.capturing .wwas-item-actions{display:none!important}
         <div class="settings-item settings-toggle" id="spotterModeToggle" onclick="toggleSpotterMode()">
           <i class="fas fa-tower-observation"></i>
           <span>Storm Spotter Mode</span>
-          <label class="settings-switch" title="Toggle Storm Spotter Mode"><input type="checkbox" id="spotterModeCheckbox" onclick="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
+          <label class="settings-switch" title="Toggle Storm Spotter Mode"><input type="checkbox" id="spotterModeCheckbox" onclick="event.stopPropagation()" onchange="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
         </div>
         <div class="settings-item settings-toggle mom-mode-toggle" id="momModeToggle" onclick="toggleMomMode()">
           <i class="fas fa-dog"></i>
           <span>Mom Mode</span>
-          <label class="settings-switch" title="Toggle Mom Mode - shows Rufus the Weather Dog instead of detailed metrics"><input type="checkbox" id="momModeCheckbox" onclick="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
+          <label class="settings-switch" title="Toggle Mom Mode - shows Rufus the Weather Dog instead of detailed metrics"><input type="checkbox" id="momModeCheckbox" onclick="event.stopPropagation()" onchange="event.stopPropagation()"><span class="settings-switch-slider"></span></label>
         </div>
       </div>
     </div>
@@ -1487,10 +1487,15 @@ function applySpotterMode(){
 }
 
 /* Toggle Storm Spotter Mode on/off. Called when the user clicks the toggle
-   in the Settings menu. */
+   row OR the checkbox itself. Flips the enabled state, then syncs the
+   checkbox visual to match (so the checkbox always reflects the truth,
+   regardless of whether the click came from the row or the checkbox). */
 function toggleSpotterMode(){
   spotterModeEnabled=!spotterModeEnabled;
   saveSpotterMode(spotterModeEnabled);
+  /* Sync the checkbox visual to match the new state */
+  var cb=document.getElementById('spotterModeCheckbox');
+  if(cb)cb.checked=spotterModeEnabled;
   applySpotterMode();
   /* Close the settings menu so the user can see the tab bar change */
   var menu=document.getElementById('settingsMenu');
@@ -1532,6 +1537,9 @@ function applyMomMode(){
 function toggleMomMode(){
   momModeEnabled=!momModeEnabled;
   saveMomMode(momModeEnabled);
+  /* Sync the checkbox visual to match the new state */
+  var cb=document.getElementById('momModeCheckbox');
+  if(cb)cb.checked=momModeEnabled;
   applyMomMode();
   var menu=document.getElementById('settingsMenu');
   if(menu)menu.classList.remove('open');
