@@ -1188,6 +1188,13 @@ var PANELS=[
     updateId:'upd-spcr',refreshFn:'fSPCRss',collapsible:true,tab:'spc',
     body:'<div class="img-stage" style="margin-bottom:10px"><img src="https://www.spc.noaa.gov/products/watch/validww.png" alt="SPC Valid Watches Map" loading="lazy" style="width:100%;height:auto;display:block" id="spcValidWwImg"><div class="img-cap">SPC - Valid Watches Map (auto-refreshes with cache-busting)</div></div><div class="st" id="spcRssTabs"></div><div class="spc-rss-list" id="spcRL"><div class="lt"><i class="fas fa-spinner"></i>Loading SPC feeds...</div></div>'
   },
+  /* 15b. Nowcast Engine (1-12 hour forecast based on live surface obs + sounding) */
+  {
+    id:'nowcast',title:'Nowcast Engine',icon:'fa-bolt-lightning',
+    badge:'LIVE',badgeClass:'cb-l',gridClass:'gf',
+    updateId:'upd-nc',refreshFn:'fNowcast',collapsible:true,tab:'spotting',
+    body:'<div id="ncContent"><div class="lt"><i class="fas fa-spinner"></i> Loading nowcast data...</div></div><div class="cc" style="height:360px;margin-top:14px"><canvas id="ncCh"></canvas></div><div id="ncAlerts"></div>'
+  },
   /* 16. Aviation */
   {
     id:'aviation',title:'Aviation',icon:'fa-plane',
@@ -1261,13 +1268,6 @@ var PANELS=[
     badge:'MiDrive',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'current',
     body:'<div id="rcGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>'
-  },
-  /* 20b. Nowcast Engine (1-12 hour forecast based on live surface obs + sounding) */
-  {
-    id:'nowcast',title:'Nowcast Engine',icon:'fa-bolt-lightning',
-    badge:'LIVE',badgeClass:'cb-l',gridClass:'gf',
-    updateId:'upd-nc',refreshFn:'fNowcast',collapsible:true,tab:'spotting',
-    body:'<div id="ncContent"><div class="lt"><i class="fas fa-spinner"></i> Loading nowcast data...</div></div><div class="cc" style="height:360px;margin-top:14px"><canvas id="ncCh"></canvas></div><div id="ncAlerts"></div>'
   },
   /* 21. Facebook (responsive, always last) */
   {
@@ -1854,67 +1854,77 @@ function resetPanelOrder(){
   showToast('Panel order reset to default');
 }
 
-/* Get the current panel order as an array of panel IDs (from the DOM) */
+/* Get the current panel order across ALL tab panes (from the DOM).
+   Returns a flat array of panel IDs in DOM order across all panes. */
 function getCurrentPanelOrder(){
-  var panels=document.querySelectorAll('#mainGrid > .c');
+  var panels=document.querySelectorAll('.tab-pane .c');
   var order=[];
   panels.forEach(function(p){
     var id=p.id.replace('panel-','');
-    if(id)order.push(id);
+    if(id&&id!=='fb')order.push(id);
   });
   return order;
 }
 
-/* Apply a panel order (array of IDs) to the DOM by reordering the panel elements */
+/* Apply a panel order (array of IDs) to the DOM by reordering panels
+   within their respective tab panes. Each panel is moved to the end of
+   its parent tab pane, in the order specified. */
 function applyPanelOrder(order){
-  var grid=document.getElementById('mainGrid');
-  if(!grid)return;
+  if(!order||!order.length)return;
+  /* Group panels by their tab pane and reorder within each pane */
   order.forEach(function(id){
     var el=document.getElementById('panel-'+id);
-    if(el)grid.appendChild(el);  /* appendChild moves the element to the end */
+    if(el&&el.parentNode){
+      el.parentNode.appendChild(el);
+    }
   });
-  /* Always move the Facebook panel to the very end (it has no header, always last) */
+  /* Always move the Facebook panel to the very end of its pane */
   var fb=document.getElementById('panel-fb');
-  if(fb)grid.appendChild(fb);
-  /* Update position numbers if in move mode */
+  if(fb&&fb.parentNode)fb.parentNode.appendChild(fb);
   if(document.body.classList.contains('move-mode'))updatePositionSelectors();
 }
 
-/* Show position selectors and update the numbers on each panel */
+/* Show position selectors and update the numbers on each panel.
+   Numbers are per-tab-pane (each pane has its own 1, 2, 3... sequence). */
 function updatePositionSelectors(){
-  var panels=document.querySelectorAll('#mainGrid > .c');
-  var total=panels.length;
-  panels.forEach(function(p,i){
-    var id=p.id.replace('panel-','');
-    var wrap=document.getElementById('posWrap-'+id);
-    var num=document.getElementById('posNum-'+id);
-    var upBtn=wrap?wrap.querySelector('.pos-up'):null;
-    var downBtn=wrap?wrap.querySelector('.pos-down'):null;
-    if(wrap)wrap.classList.add('open');
-    if(num)num.textContent=(i+1);
-    /* Disable up arrow on first panel, down arrow on last panel */
-    if(upBtn)upBtn.disabled=(i===0);
-    if(downBtn)downBtn.disabled=(i===total-1);
+  /* Process each tab pane separately */
+  document.querySelectorAll('.tab-pane').forEach(function(pane){
+    if(pane.id==='tabpane-fb')return;  /* skip Facebook pane */
+    var panels=pane.querySelectorAll('.c');
+    var total=panels.length;
+    panels.forEach(function(p,i){
+      var id=p.id.replace('panel-','');
+      var wrap=document.getElementById('posWrap-'+id);
+      var num=document.getElementById('posNum-'+id);
+      var upBtn=wrap?wrap.querySelector('.pos-up'):null;
+      var downBtn=wrap?wrap.querySelector('.pos-down'):null;
+      if(wrap)wrap.classList.add('open');
+      if(num)num.textContent=(i+1);
+      if(upBtn)upBtn.disabled=(i===0);
+      if(downBtn)downBtn.disabled=(i===total-1);
+    });
   });
 }
 
-/* Move a panel up one position (swap with the panel above it) */
+/* Move a panel up one position (swap with the panel above it within
+   the same tab pane) */
 function movePanelUp(id){
   var panel=document.getElementById('panel-'+id);
   if(!panel)return;
   var prev=panel.previousElementSibling;
-  if(prev){
+  if(prev&&prev.classList.contains('c')){
     panel.parentNode.insertBefore(panel,prev);
     updatePositionSelectors();
   }
 }
 
-/* Move a panel down one position (swap with the panel below it) */
+/* Move a panel down one position (swap with the panel below it within
+   the same tab pane) */
 function movePanelDown(id){
   var panel=document.getElementById('panel-'+id);
   if(!panel)return;
   var next=panel.nextElementSibling;
-  if(next){
+  if(next&&next.classList.contains('c')){
     panel.parentNode.insertBefore(next,panel);
     updatePositionSelectors();
   }
