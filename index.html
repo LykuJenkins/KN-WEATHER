@@ -547,6 +547,24 @@ body.capturing .mom-mode-toggle{display:none}
 .senv-level-moisture{font-size:8px;font-weight:700;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:3px;display:inline-block}
 .sndenv-cat:first-of-type{margin-top:0}
 
+/* Nowcast Engine panel */
+.nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
+.nc-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px}
+.nc-card-label{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.nc-card-val{font-size:15px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--t1);line-height:1.2}
+.nc-card-sub{font-size:9px;color:var(--t3);margin-top:3px}
+.nc-card-delta{font-size:10px;font-weight:700;margin-top:4px}
+.nc-card-delta.up{color:var(--dng)}
+.nc-card-delta.down{color:var(--suc)}
+.nc-station{font-size:10px;color:var(--acc);font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.nc-alerts{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.nc-alert{padding:10px 12px;border-radius:var(--rs);font-size:11px;font-weight:600;display:flex;align-items:center;gap:8px;animation:sd .3s ease-out}
+.nc-alert.danger{background:rgba(239,68,68,.1);border:1px solid #ef4444;color:#fca5a5}
+.nc-alert.warning{background:rgba(251,191,36,.1);border:1px solid #fbbf24;color:#fcd34d}
+.nc-alert.info{background:rgba(96,165,250,.1);border:1px solid #60a5fa;color:#93c5fd}
+.nc-alert.stable{background:rgba(52,211,153,.1);border:1px solid #34d399;color:#6ee7b7}
+.nc-alert i{font-size:14px;flex-shrink:0}
+
 /* WWA Summary panel */
 .wwas-filters{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
 .wwas-mute-bar{margin-bottom:8px;padding:6px 10px;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs)}
@@ -1243,6 +1261,13 @@ var PANELS=[
     badge:'MiDrive',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-rc',refreshFn:'rRoadCams',collapsible:true,tab:'current',
     body:'<div id="rcGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>'
+  },
+  /* 20b. Nowcast Engine (1-12 hour forecast based on live surface obs + sounding) */
+  {
+    id:'nowcast',title:'Nowcast Engine',icon:'fa-bolt-lightning',
+    badge:'LIVE',badgeClass:'cb-l',gridClass:'gf',
+    updateId:'upd-nc',refreshFn:'fNowcast',collapsible:true,tab:'spotting',
+    body:'<div id="ncContent"><div class="lt"><i class="fas fa-spinner"></i> Loading nowcast data...</div></div><div class="cc" style="height:360px;margin-top:14px"><canvas id="ncCh"></canvas></div><div id="ncAlerts"></div>'
   },
   /* 21. Facebook (responsive, always last) */
   {
@@ -3160,6 +3185,305 @@ function liBadge(v){
   if(v<-2)return {text:'MODERATE',cls:'sndenv-badge',style:'background:var(--acc-g);color:var(--acc)'};
   if(v<0)return {text:'SLIGHT',cls:'sndenv-badge',style:'background:var(--suc-g);color:var(--suc)'};
   return {text:'STABLE',cls:'sndenv-badge',style:'background:rgba(255,255,255,.04);color:var(--t3)'};
+}
+
+/* ── Nowcast Engine ──────────────────────────────────────────────────────────
+   1-12 hour nowcast for SW Michigan. Takes the latest radiosonde sounding
+   and overwrites the surface layer with live METAR observations from
+   KAZO/KLWA/KBIV, then displays a dual-line chart (original vs nowcast)
+   plus automated threat alerts.
+
+   Phase 1: surface overwrite + dual-line chart + lake breeze gradient +
+   threat alerts (using original CAPE/CIN from the sounding, not yet
+   recalculated with the modified surface). */
+
+var ncCh=null;
+var ncCache={data:null,time:0};
+var NOWCAST_SOUNGINGS=[
+  {stnm:'72632',label:'DTX - White Lake',fallbacks:['725330','726344']},
+  {stnm:'725330',label:'IWX - N. Indiana',fallbacks:['72632','726344']},
+  {stnm:'726344',label:'APX - Gaylord',fallbacks:['72632','725330']},
+  {stnm:'724600',label:'ILX - Lincoln, IL',fallbacks:['725460','726450']},
+  {stnm:'725460',label:'DVN - Davenport, IA',fallbacks:['724600','726450']},
+  {stnm:'726450',label:'MPX - Minneapolis',fallbacks:['725460','724600']}
+];
+
+async function fNowcast(){
+  var content=document.getElementById('ncContent');
+  var alertsEl=document.getElementById('ncAlerts');
+  if(!content)return;
+
+  var now=Date.now();
+  if(ncCache.data&&(now-ncCache.time)<5*60*1000){
+    renderNowcast(ncCache.data);
+    return;
+  }
+
+  content.innerHTML='<div class="lt"><i class="fas fa-spinner"></i> Fetching nowcast data...</div>';
+  if(alertsEl)alertsEl.innerHTML='';
+
+  try{
+    /* Step 1: Fetch live METAR observations from KAZO, KLWA, KBIV */
+    var stations=['KAZO','KLWA','KBIV'];
+    var metars={};
+    await Promise.all(stations.map(async function(sid){
+      try{
+        var r=await Promise.race([
+          fetch('https://api.weather.gov/stations/'+sid+'/observations?limit=1',{headers:{'Accept':'application/geo+json'}}),
+          to(10e3)
+        ]);
+        if(r&&r.ok){
+          var d=await r.json();
+          if(d.features&&d.features[0]){
+            var p=d.features[0].properties;
+            metars[sid]={
+              temp:p.temperature&&p.temperature.value!=null?p.temperature.value:null,
+              dwpt:p.dewpoint&&p.dewpoint.value!=null?p.dewpoint.value:null,
+              windSpd:p.windSpeed&&p.windSpeed.value!=null?p.windSpeed.value:null,
+              windDir:p.windDirection&&p.windDirection.value!=null?p.windDirection.value:null,
+              time:p.timestamp||null
+            };
+          }
+        }
+      }catch(e){console.warn('Nowcast METAR fetch failed for '+sid+':',e)}
+    }));
+
+    /* Step 2: Fetch sounding from DTX (primary) with fallback */
+    var snd=latestSoundingTime();
+    var soundingData=null;
+    var soundingStation='';
+    var primaryStation=NOWCAST_SOUNGINGS[0];
+    var stationsToTry=[primaryStation.stnm].concat(primaryStation.fallbacks);
+
+    for(var si=0;si<stationsToTry.length&&!soundingData;si++){
+      var stnm=stationsToTry[si];
+      var stnLabel=NOWCAST_SOUNGINGS.find(function(s){return s.stnm===stnm});
+      try{
+        var url='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+snd.year+'&MONTH='+snd.month+'&FROM='+snd.from+'&TO='+snd.to+'&STNM='+stnm;
+        var txt=await fP(url);
+        if(txt&&txt.length>100){
+          var parsed=parseWyomingSounding(txt);
+          if(parsed.profile&&parsed.profile.length>5){
+            soundingData=parsed;
+            soundingStation=stnLabel?stnLabel.label:stnm;
+          }
+        }
+      }catch(e){console.warn('Nowcast sounding fetch failed for '+stnm+':',e)}
+    }
+
+    if(!soundingData){
+      var prevHour=snd.from.substring(2,4)==='12'?'00':'12';
+      var prevDay,prevMonth,prevYear;
+      if(prevHour==='00'&&snd.from.substring(0,2)==='01'){
+        var prev=new Date(Date.UTC(parseInt(snd.year),parseInt(snd.month)-1,0));
+        prevDay=('0'+prev.getUTCDate()).slice(-2);
+        prevMonth=('0'+(prev.getUTCMonth()+1)).slice(-2);
+        prevYear=prev.getUTCFullYear();
+      }else if(prevHour==='00'){
+        prevDay=('0'+(parseInt(snd.from.substring(0,2))-1)).slice(-2);
+        prevMonth=snd.month;prevYear=snd.year;
+      }else{
+        prevDay=snd.from.substring(0,2);prevMonth=snd.month;prevYear=snd.year;
+      }
+      for(var si2=0;si2<stationsToTry.length&&!soundingData;si2++){
+        var stnm2=stationsToTry[si2];
+        try{
+          var url2='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+prevYear+'&MONTH='+prevMonth+'&FROM='+prevDay+prevHour+'&TO='+prevDay+prevHour+'&STNM='+stnm2;
+          var txt2=await fP(url2);
+          if(txt2&&txt2.length>100){
+            var parsed2=parseWyomingSounding(txt2);
+            if(parsed2.profile&&parsed2.profile.length>5){
+              soundingData=parsed2;
+              soundingStation=(NOWCAST_SOUNGINGS.find(function(s){return s.stnm===stnm2})||{label:stnm2}).label+' (12h old)';
+            }
+          }
+        }catch(e){}
+      }
+    }
+
+    if(!soundingData){
+      content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation"></i> Sounding data unavailable. Nowcast cannot be generated.</div>';
+      return;
+    }
+
+    /* Step 3: Choose best live surface observation */
+    var surfaceSource=null,surfaceMetar=null;
+    if(metars.KAZO&&metars.KAZO.temp!==null){surfaceSource='KAZO - Kalamazoo';surfaceMetar=metars.KAZO}
+    else if(metars.KLWA&&metars.KLWA.temp!==null){surfaceSource='KLWA - South Haven';surfaceMetar=metars.KLWA}
+    else if(metars.KBIV&&metars.KBIV.temp!==null){surfaceSource='KBIV - Holland';surfaceMetar=metars.KBIV}
+
+    /* Step 4: Create nowcast profile by overwriting surface layer */
+    var originalProfile=soundingData.profile.map(function(p){return{pres:p.pres,temp:p.temp,dwpt:p.dwpt}});
+    var nowcastProfile=soundingData.profile.map(function(p){return{pres:p.pres,temp:p.temp,dwpt:p.dwpt}});
+
+    if(surfaceMetar){
+      for(var i=0;i<nowcastProfile.length;i++){
+        if(nowcastProfile[i].temp!==null&&nowcastProfile[i].pres>=900){
+          var origTemp=nowcastProfile[i].temp;
+          var origDwpt=nowcastProfile[i].dwpt;
+          nowcastProfile[i].temp=surfaceMetar.temp;
+          if(surfaceMetar.dwpt!==null)nowcastProfile[i].dwpt=surfaceMetar.dwpt;
+          /* Blend the next level (50% influence) */
+          var blendFactor=0.5;
+          if(i+1<nowcastProfile.length&&nowcastProfile[i+1].temp!==null){
+            var tempDelta=surfaceMetar.temp-origTemp;
+            nowcastProfile[i+1].temp=nowcastProfile[i+1].temp+tempDelta*blendFactor;
+            if(surfaceMetar.dwpt!==null&&origDwpt!==null){
+              var dwptDelta=surfaceMetar.dwpt-origDwpt;
+              nowcastProfile[i+1].dwpt=nowcastProfile[i+1].dwpt+dwptDelta*blendFactor;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    /* Step 5: Lake breeze gradient (KLWA shoreline vs KAZO inland) */
+    var lakeBreeze={};
+    if(metars.KLWA&&metars.KAZO&&metars.KLWA.dwpt!==null&&metars.KAZO.dwpt!==null){
+      lakeBreeze.klwaDwpt=metars.KLWA.dwpt;
+      lakeBreeze.kazoDwpt=metars.KAZO.dwpt;
+      lakeBreeze.diff=Math.abs(metars.KLWA.dwpt-metars.KAZO.dwpt)*1.8;
+      lakeBreeze.shoreWarmer=metars.KLWA.dwpt>metars.KAZO.dwpt;
+    }
+
+    /* Step 6: Assemble nowcast data */
+    var ncData={
+      originalProfile:originalProfile,
+      nowcastProfile:nowcastProfile,
+      soundingStation:soundingStation,
+      surfaceSource:surfaceSource,
+      surfaceMetar:surfaceMetar,
+      originalCape:soundingData.cape,
+      originalCin:soundingData.cin,
+      originalLi:soundingData.liftedIndex,
+      lakeBreeze:lakeBreeze,
+      metars:metars,
+      obsTime:soundingData.obsTime
+    };
+
+    ncCache={data:ncData,time:now};
+    renderNowcast(ncData);
+    mkUp('nc');
+  }catch(e){
+    console.error('Nowcast error:',e);
+    content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation"></i> Nowcast error: '+(e.message||e)+'</div>';
+  }
+}
+
+function renderNowcast(d){
+  var content=document.getElementById('ncContent');
+  var alertsEl=document.getElementById('ncAlerts');
+  if(!content)return;
+
+  var html='';
+  html+='<div class="nc-station"><i class="fas fa-satellite-dish"></i> Sounding: '+d.soundingStation+' ('+d.obsTime+' UTC)';
+  if(d.surfaceSource)html+=' &nbsp;|&nbsp; <i class="fas fa-plane"></i> Surface: '+d.surfaceSource;
+  html+='</div>';
+  html+='<div class="nc-grid">';
+
+  html+='<div class="nc-card"><div class="nc-card-label">Original CAPE</div><div class="nc-card-val">'+(d.originalCape?senvVal(d.originalCape)+' J/kg':'--')+'</div><div class="nc-card-sub">From 12Z sounding</div></div>';
+  html+='<div class="nc-card"><div class="nc-card-label">Original CIN</div><div class="nc-card-val">'+(d.originalCin?senvVal(d.originalCin)+' J/kg':'--')+'</div><div class="nc-card-sub">From 12Z sounding</div></div>';
+  html+='<div class="nc-card"><div class="nc-card-label">Lifted Index</div><div class="nc-card-val">'+(d.originalLi!==null?senvVal(d.originalLi,1):'--')+'</div><div class="nc-card-sub">From 12Z sounding</div></div>';
+
+  if(d.surfaceMetar){
+    var tempF=Math.round(d.surfaceMetar.temp*9/5+32);
+    var dwptF=d.surfaceMetar.dwpt!==null?Math.round(d.surfaceMetar.dwpt*9/5+32):'--';
+    html+='<div class="nc-card"><div class="nc-card-label">Live Surface (Nowcast)</div><div class="nc-card-val">'+tempF+'F / '+dwptF+'F</div><div class="nc-card-sub">Temp / Dewpt from '+d.surfaceSource+'</div></div>';
+  }else{
+    html+='<div class="nc-card"><div class="nc-card-label">Live Surface</div><div class="nc-card-val">--</div><div class="nc-card-sub">METAR unavailable</div></div>';
+  }
+
+  if(d.lakeBreeze&&d.lakeBreeze.diff!==undefined){
+    var lbColor=d.lakeBreeze.diff>2.8?'var(--wrn)':'var(--suc)';
+    html+='<div class="nc-card"><div class="nc-card-label">Lake Breeze Gradient</div><div class="nc-card-val" style="color:'+lbColor+'">'+d.lakeBreeze.diff.toFixed(1)+'F</div><div class="nc-card-sub">LWA vs KAZO dewpoint</div></div>';
+  }
+
+  html+='</div>';
+  content.innerHTML=html;
+
+  renderNowcastChart(d);
+  renderNowcastAlerts(d);
+}
+
+function renderNowcastChart(d){
+  var canvas=document.getElementById('ncCh');
+  if(!canvas)return;
+  var orig=d.originalProfile.filter(function(p){return p.temp!==null&&!isNaN(p.temp)});
+  var nc=d.nowcastProfile.filter(function(p){return p.temp!==null&&!isNaN(p.temp)});
+  if(!orig.length||!nc.length){canvas.parentElement.innerHTML='<div class="lt">No profile data</div>';return}
+
+  if(ncCh)ncCh.destroy();
+  ncCh=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{
+      datasets:[
+        {label:'Orig Temp (C)',data:orig.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'rgba(251,113,133,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
+        {label:'Orig Dewpt (C)',data:orig.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'rgba(52,211,153,.3)',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y'},
+        {label:'Nowcast Temp (C)',data:nc.map(function(p){return{x:p.temp,y:p.pres}}),borderColor:'#fb7185',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'},
+        {label:'Nowcast Dewpt (C)',data:nc.map(function(p){return{x:p.dwpt!==null?p.dwpt:p.temp-99,y:p.pres}}),borderColor:'#34d399',backgroundColor:'transparent',fill:false,tension:.3,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,yAxisID:'y'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',align:'end',labels:{color:'#9898a8',font:{size:8,family:'Inter'},boxWidth:10,boxHeight:2,padding:4}},
+        tooltip:{backgroundColor:'rgba(14,14,21,.95)',titleColor:'#e4e4ec',bodyColor:'#9898a8',borderColor:'rgba(168,85,246,.2)',borderWidth:1,padding:8,cornerRadius:8,callbacks:{
+          title:function(items){var p=items[0]?items[0].parsed.y:null;return p!==null?Math.round(p)+' hPa':''},
+          label:function(c){return c.dataset.label+': '+c.parsed.x.toFixed(1)+'C'}
+        }}
+      },
+      scales:{
+        x:{type:'linear',title:{display:true,text:'Temperature (C)',color:'#5c5c6e',font:{size:9,family:'Inter'}},grid:{color:'rgba(139,92,246,.05)',drawBorder:false},ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'}}},
+        y:{type:'linear',reverse:true,title:{display:true,text:'Pressure (hPa)',color:'#5c5c6e',font:{size:9,family:'Inter'}},grid:{color:'rgba(139,92,246,.05)',drawBorder:false},ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'}}}
+      }
+    }
+  });
+}
+
+function renderNowcastAlerts(d){
+  var el=document.getElementById('ncAlerts');
+  if(!el)return;
+  var alerts=[];
+
+  if(d.originalCape&&d.originalCape>1500&&d.originalCin&&d.originalCin>-20){
+    alerts.push({cls:'danger',icon:'fa-tornado',text:'[ALERT] Explosive environment developing over SW Michigan. CAPE='+Math.round(d.originalCape)+'J/kg, CIN='+Math.round(d.originalCin)+'J/kg. Cap nearly eroded.'});
+  }
+
+  if(d.originalCin&&d.originalCin<-50&&d.surfaceMetar){
+    var tempF=d.surfaceMetar.temp*9/5+32;
+    if(tempF>75){
+      alerts.push({cls:'warning',icon:'fa-temperature-arrow-up',text:'[WARNING] Surface temp '+Math.round(tempF)+'F may erode the cap (CIN='+Math.round(d.originalCin)+'J/kg). Monitor for convective initiation.'});
+    }
+  }
+
+  if(d.lakeBreeze&&d.lakeBreeze.diff&&d.lakeBreeze.diff>2.8){
+    var shoreSide=d.lakeBreeze.shoreWarmer?'shoreline (LWA) warmer':'inland (KAZO) warmer';
+    alerts.push({cls:'info',icon:'fa-water',text:'[INFO] Sharp moisture gradient near Lake Michigan shoreline. '+d.lakeBreeze.diff.toFixed(1)+'F dewpoint difference ('+shoreSide+'). Lake breeze boundary may trigger convection.'});
+  }
+
+  if(d.originalCape&&d.originalCape>1000&&d.surfaceMetar&&d.surfaceMetar.dwpt!==null){
+    var dwptF=d.surfaceMetar.dwpt*9/5+32;
+    if(dwptF>60){
+      alerts.push({cls:'warning',icon:'fa-cloud-bolt',text:'[WARNING] CAPE='+Math.round(d.originalCape)+'J/kg with surface dewpoint '+Math.round(dwptF)+'F. Sufficient moisture and instability for thunderstorm development.'});
+    }
+  }
+
+  if((!d.originalCape||d.originalCape<100)&&alerts.length===0){
+    alerts.push({cls:'stable',icon:'fa-check-circle',text:'[STABLE] No significant threat detected. CAPE low, atmosphere stable.'});
+  }
+
+  if(alerts.length===0){
+    alerts.push({cls:'stable',icon:'fa-check-circle',text:'[STABLE] Conditions not favorable for severe weather at this time.'});
+  }
+
+  var html='<div class="nc-alerts">';
+  alerts.forEach(function(a){
+    html+='<div class="nc-alert '+a.cls+'"><i class="fas '+a.icon+'"></i>'+a.text+'</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 async function fStormEnv(){
@@ -5996,7 +6320,7 @@ async function refreshAll(){
       current:[],          /* already refreshed above */
       nws:['fAFD','fRSS','fNWSNational','fDWML','fLocalObs','fGridpoint','fHeadlines'],
       spc:['fSPCRss'],
-      spotting:['fAllAv','fStormEnv','fLSR']
+      spotting:['fAllAv','fStormEnv','fLSR','fNowcast']
     };
     var tabSyncFns={
       current:[],
