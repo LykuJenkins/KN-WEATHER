@@ -1871,6 +1871,33 @@ function screenshotPanel(panelId,btn){
   }
 
   Promise.all(crossOriginImgs.map(convertImageToDataUrl)).then(function(){
+    /* Special handling for the Alert Polygon Map panel: Leaflet uses
+       transform: translate3d() on tile images and the map container, and
+       html2canvas doesn't always sync those transforms correctly - the base
+       tile layer ends up offset from the vector overlays (purple borders,
+       alert polygons). To fix this:
+       1. Call map.invalidateSize() so Leaflet recomputes its layout to match
+          the new panel width we just set.
+       2. Wait for the map's 'load' event (fires when all visible tiles finish
+          loading) plus a 500ms buffer to let tile transforms settle.
+       3. Then run html2canvas. The vector overlays and tile layer will now be
+          in sync. */
+    var mapReadyPromise=Promise.resolve();
+    if(panelId==='alertMap'&&typeof alertMapInstance!=='undefined'&&alertMapInstance){
+      mapReadyPromise=new Promise(function(resolve){
+        if(!alertMapInstance._loaded){resolve();return}
+        /* invalidateSize triggers a re-layout. Listen for the next 'load'
+           event (fires after tiles finish repositioning). Also set a 1.5s
+           timeout as a fallback in case 'load' never fires (e.g. all tiles
+           already cached). */
+        var done=false;
+        function finish(){if(!done){done=true;setTimeout(resolve,500)}}
+        alertMapInstance.once('load',finish);
+        alertMapInstance.invalidateSize();
+        setTimeout(finish,1500);  /* fallback */
+      });
+    }
+    mapReadyPromise.then(function(){
     /* Now all images are either data URIs or still original (if proxy failed) */
     html2canvas(panel,{
       backgroundColor:'#0e0e15',
@@ -1916,6 +1943,7 @@ function screenshotPanel(panelId,btn){
       bodies.forEach(function(b,i){b.style.maxHeight=savedMaxHeight[i]||''});
       showToast('Screenshot failed: '+(err.message||err),true);
     });
+    });  /* close mapReadyPromise.then() */
   });
 }
 
@@ -2834,7 +2862,13 @@ function alertCategory(event){
 function initAlertMap(){
   var mapEl=document.getElementById('alertMap');
   if(!mapEl||alertMapInstance)return;
-  alertMapInstance=L.map('alertMap',{scrollWheelZoom:false}).setView([42.15,-86.15],8);
+  /* Use Canvas renderer (preferCanvas:true) instead of the default SVG renderer.
+     This is critical for screenshot exports: html2canvas doesn't correctly
+     capture Leaflet's SVG overlay pane (which uses transform: translate3d()
+     for positioning) - the overlays end up shifted relative to the base tiles.
+     With Canvas rendering, overlays are drawn as pixels on a <canvas> element
+     which html2canvas captures perfectly. */
+  alertMapInstance=L.map('alertMap',{scrollWheelZoom:false,preferCanvas:true}).setView([42.15,-86.15],8);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
     maxZoom:18,
     attribution:'&copy; OpenStreetMap'
