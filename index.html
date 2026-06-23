@@ -1186,7 +1186,7 @@ var PANELS=[
     id:'stormEnv',title:'Storm Environment',icon:'fa-tornado',
     badge:'UWYO',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-senv',refreshFn:'fStormEnv',collapsible:true,tab:'spotting',
-    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div>'
+    body:'<div class="st" id="senvStationTabs"></div><div id="senvContent"><div class="lt"><i class="fas fa-spinner"></i> Loading sounding data...</div></div><div class="cc" style="height:320px;margin-top:14px"><canvas id="senvCh"></canvas></div>'
   },
   /* 19. Lightning Tracker (Blitzortung) */
   {
@@ -1240,7 +1240,7 @@ var spcRssAct='watches';               /* active SPC RSS feed id */
 var avAct=AVIATION_STATIONS[0].id;     /* active aviation station id */
 
 /* Cached chart + data objects */
-var hCh=null,mCh=null;
+var hCh=null,mCh=null,senvCh=null;
 var avCache={},spcRC={};
 
 /* ── Generic utilities ─────────────────────────────────────────────────────── */
@@ -3066,6 +3066,36 @@ function parseWyomingSounding(text){
   result.obsTime=obsMatch?obsMatch[1]:'';
   var stationMatch=text.match(/Station:\s*(\S+)/);
   result.station=stationMatch?stationMatch[1]:'';
+  /* Extract vertical profile data from the data table.
+     The table has columns: PRES HGHT TEMP DWPT RELH MIXR DRCT SKNT THTA THTE THTV
+     We parse each row that has at least PRES and TEMP values. */
+  result.profile=[];
+  var lines=text.split('\n');
+  var inData=false;
+  var dashCount=0;
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i].trim();
+    /* The --- separator appears twice: once before the header, once after.
+       We only care about the SECOND one - that's when actual data starts. */
+    if(ln.startsWith('---')){
+      dashCount++;
+      if(dashCount===2)inData=true;
+      continue;
+    }
+    if(!inData)continue;
+    /* Skip the column header line (PRES HGHT TEMP...) and unit line (hPa m C...) */
+    if(ln.startsWith('PRES')||ln.includes('hPa')&&ln.includes('C')&&!ln.match(/^\d/))continue;
+    /* Parse the data row - split by whitespace */
+    var parts=ln.split(/\s+/);
+    if(parts.length<4)continue;
+    var pres=parseFloat(parts[0]);
+    var temp=parts[2]!==''?parseFloat(parts[2]):null;
+    var dwpt=parts[3]!==''?parseFloat(parts[3]):null;
+    /* Only include rows with valid pressure and at least temp or dewpoint */
+    if(!isNaN(pres)&&pres>0&&(temp!==null||dwpt!==null)){
+      result.profile.push({pres:pres,temp:temp,dwpt:dwpt});
+    }
+  }
   return result;
 }
 
@@ -3186,6 +3216,107 @@ function renderStormEnv(d,st){
   html+=senvCard('1000-500 Thick',senvVal(d.thickness,0),'m','');
   html+='</div>';
   content.innerHTML=html;
+  /* Render the sounding profile chart (temperature + dew point vs pressure) */
+  renderSoundingChart(d);
+}
+
+/* Render a vertical temperature/dew point profile chart from the sounding data.
+   This is a simplified Skew-T style chart - pressure on the y-axis (inverted,
+   so 1000 hPa at bottom, 100 hPa at top), temperature on the x-axis.
+   Red line = temperature, green line = dew point. The area between them
+   visually represents moisture - wider gap = drier air. */
+function renderSoundingChart(d){
+  var canvas=document.getElementById('senvCh');
+  if(!canvas)return;
+  if(!d.profile||!d.profile.length){
+    canvas.parentElement.innerHTML='<div class="lt">No sounding profile data</div>';
+    return;
+  }
+  /* Extract pressure/temp/dwpt arrays from the profile data.
+     Filter out null temperature values (some levels only have pressure). */
+  var pres=[],temp=[],dwpt=[];
+  d.profile.forEach(function(p){
+    if(p.temp!==null){
+      pres.push(p.pres);
+      temp.push(p.temp);
+      dwpt.push(p.dwpt!==null?p.dwpt:null);
+    }
+  });
+  if(!pres.length){
+    canvas.parentElement.innerHTML='<div class="lt">No temperature data in sounding</div>';
+    return;
+  }
+  if(senvCh)senvCh.destroy();
+  senvCh=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{
+      labels:pres.map(function(p){return Math.round(p)}),
+      datasets:[
+        {
+          label:'Temp (°C)',
+          data:temp,
+          borderColor:'#fb7185',
+          backgroundColor:'rgba(251,113,133,.08)',
+          fill:false,
+          tension:.3,
+          borderWidth:2,
+          pointRadius:0,
+          pointHoverRadius:4,
+          pointHoverBackgroundColor:'#fb7185',
+          yAxisID:'y'
+        },
+        {
+          label:'Dew Pt (°C)',
+          data:dwpt,
+          borderColor:'#34d399',
+          backgroundColor:'rgba(52,211,153,.08)',
+          fill:false,
+          tension:.3,
+          borderWidth:2,
+          pointRadius:0,
+          pointHoverRadius:4,
+          pointHoverBackgroundColor:'#34d399',
+          yAxisID:'y'
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',align:'end',labels:{color:'#9898a8',font:{size:9,family:'Inter'},boxWidth:12,boxHeight:2,padding:6}},
+        tooltip:{
+          backgroundColor:'rgba(14,14,21,.95)',
+          titleColor:'#e4e4ec',
+          bodyColor:'#9898a8',
+          borderColor:'rgba(168,85,246,.2)',
+          borderWidth:1,
+          padding:8,
+          cornerRadius:8,
+          callbacks:{
+            title:function(items){return items[0].label+' hPa'},
+            label:function(c){return c.dataset.label.includes('Temp')?' '+c.parsed.y+'°C':' '+(c.parsed.y!==null?c.parsed.y+'°C':'N/A')}
+          }
+        }
+      },
+      scales:{
+        x:{
+          title:{display:true,text:'Temperature (°C)',color:'#5c5c6e',font:{size:9,family:'Inter'}},
+          grid:{color:'rgba(139,92,246,.05)',drawBorder:false},
+          ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'}}
+        },
+        y:{
+          /* Inverted y-axis: high pressure at bottom, low pressure at top.
+             This matches how Skew-T diagrams display altitude. */
+          reverse:true,
+          title:{display:true,text:'Pressure (hPa)',color:'#5c5c6e',font:{size:9,family:'Inter'}},
+          grid:{color:'rgba(139,92,246,.05)',drawBorder:false},
+          ticks:{color:'#9898a8',font:{size:9,family:'JetBrains Mono'},callback:function(v){return v>=1000?v:v}}
+        }
+      }
+    }
+  });
 }
 
 function senvCard(label,val,unit,badge){
