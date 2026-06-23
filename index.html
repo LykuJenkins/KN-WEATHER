@@ -903,7 +903,7 @@ var RADAR_VIEWS=[
 /* ── AVIATION STATIONS ─────────────────────────────────────────────────────── */
 var AVIATION_STATIONS=[
   {id:'KAZO',nm:'Kalamazoo'},
-  {id:'KLWA',nm:'Lawton'},
+  {id:'KLWA',nm:'South Haven'},
   {id:'KBIV',nm:'Holland'},
   {id:'KGRR',nm:'Grand Rapids'},
   {id:'KBTL',nm:'Battle Creek/Kellogg'},
@@ -3308,8 +3308,8 @@ async function fNowcast(){
 
     /* Step 3: Choose best live surface observation */
     var surfaceSource=null,surfaceMetar=null;
-    if(metars.KAZO&&metars.KAZO.temp!==null){surfaceSource='KAZO - Kalamazoo';surfaceMetar=metars.KAZO}
-    else if(metars.KLWA&&metars.KLWA.temp!==null){surfaceSource='KLWA - South Haven';surfaceMetar=metars.KLWA}
+    if(metars.KLWA&&metars.KLWA.temp!==null){surfaceSource='KLWA - South Haven';surfaceMetar=metars.KLWA}
+    else if(metars.KAZO&&metars.KAZO.temp!==null){surfaceSource='KAZO - Kalamazoo';surfaceMetar=metars.KAZO}
     else if(metars.KBIV&&metars.KBIV.temp!==null){surfaceSource='KBIV - Holland';surfaceMetar=metars.KBIV}
 
     /* Step 4: Create nowcast profile by overwriting surface layer */
@@ -6426,7 +6426,7 @@ async function fAllAv(){buildAvTabs();await Promise.all(AVIATION_STATIONS.map(fu
    (reconstructed from the parsed values when rawMessage is empty). */
 var LOCAL_OBS_STATIONS=[
   {id:'KAZO',label:'Kalamazoo Co',sub:'Kalamazoo/Battle Creek Intl'},
-  {id:'KLWA',label:'Van Buren Co',sub:'Lawton AWOS'},
+  {id:'KLWA',label:'Van Buren Co',sub:'South Haven AWOS'},
   {id:'KBIV',label:'Park Twp',sub:'Holland'}
 ];
 async function fLocalObs(){
