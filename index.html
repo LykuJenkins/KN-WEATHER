@@ -3543,52 +3543,71 @@ function renderSoundingSummary(profile){
   if(!profile||!profile.length){container.innerHTML='';return}
 
   /* Filter to only levels with both temp and dewpoint */
-  var data=profile.filter(function(p){return p.temp!==null&&p.dwpt!==null});
+  var data=profile.filter(function(p){return p.temp!==null&&p.dwpt!==null&&!isNaN(p.temp)&&!isNaN(p.dwpt)});
   if(data.length<2){container.innerHTML='';return}
 
-  /* 1. MOISTURE ANALYSIS: average dewpoint depression (temp - dwpt) across all levels */
+  /* Use the SAME 5 key level points as the Key Level Summaries and chart
+     bands, so the summary always matches what the user sees in the cards
+     and on the chart. */
+  var targetLevels=[1000,925,850,700,500];
+  function findClosest(target){
+    var best=null,bestDiff=999;
+    for(var i=0;i<profile.length;i++){
+      if(profile[i].temp===null||isNaN(profile[i].temp))continue;
+      var diff=Math.abs(profile[i].pres-target);
+      if(diff<bestDiff){bestDiff=diff;best=profile[i]}
+    }
+    return(best&&bestDiff<=20)?best:null;
+  }
+  var keyPoints=[];
+  targetLevels.forEach(function(t){
+    var pt=findClosest(t);
+    if(pt&&pt.dwpt!==null)keyPoints.push(pt);
+  });
+  if(keyPoints.length<2){container.innerHTML='';return}
+
+  /* 1. OVERALL MOISTURE: average dewpoint depression across the 5 key levels.
+     This directly summarizes the key level cards. */
   var totalDep=0,depCount=0;
-  data.forEach(function(p){
+  keyPoints.forEach(function(p){
     var dep=p.temp-p.dwpt;
     if(!isNaN(dep)){totalDep+=dep;depCount++}
   });
   var avgDep=depCount>0?totalDep/depCount:999;
   var moistureStatus,moistureColor,moistureDesc;
-  if(avgDep<=2){moistureStatus='Saturated';moistureColor='#1e40af';moistureDesc='Air is near saturation - clouds, fog, or precipitation likely.'}
-  else if(avgDep<=5){moistureStatus='Humid';moistureColor='#14b8a6';moistureDesc='Moderate moisture - some cloud development possible.'}
-  else if(avgDep<=10){moistureStatus='Moderate';moistureColor='#34d399';moistureDesc='Mixed moisture - dry air at some levels, humid at others.'}
-  else{moistureStatus='Dry';moistureColor='#fb923c';moistureDesc='Dry air throughout - stable conditions, low precipitation risk.'}
+  if(avgDep<=2){moistureStatus='Saturated';moistureColor='#1e40af';moistureDesc='Air is near saturation across key levels - clouds, fog, or precipitation likely.'}
+  else if(avgDep<=5){moistureStatus='Humid';moistureColor='#14b8a6';moistureDesc='Moderate moisture across key levels - some cloud development possible.'}
+  else if(avgDep<=10){moistureStatus='Moderate';moistureColor='#34d399';moistureDesc='Mixed moisture across key levels - dry at some levels, humid at others.'}
+  else{moistureStatus='Dry';moistureColor='#fb923c';moistureDesc='Dry air across key levels - stable conditions, low precipitation risk.'}
 
-  /* 2. TEMPERATURE INVERSION DETECTION: find layers where temp increases with
-     decreasing pressure (going up, temp goes up instead of down) */
-  var inversions=[];
-  for(var i=1;i<data.length;i++){
-    var tempDiff=data[i].temp-data[i-1].temp;
-    var presDiff=data[i-1].pres-data[i].pres;
-    if(tempDiff>0&&presDiff>0){
-      if(inversions.length>0&&inversions[inversions.length-1].endPres===data[i-1].pres){
-        inversions[inversions.length-1].endPres=data[i].pres;
-        inversions[inversions.length-1].endTemp=data[i].temp;
-        inversions[inversions.length-1].strength=Math.max(inversions[inversions.length-1].strength,tempDiff);
-      }else{
-        inversions.push({startPres:data[i-1].pres,endPres:data[i].pres,startTemp:data[i-1].temp,endTemp:data[i].temp,strength:tempDiff});
-      }
+  /* Build a per-level moisture breakdown string for the description */
+  var levelBreakdown=keyPoints.map(function(p){
+    var dep=p.temp-p.dwpt;
+    var label=p.pres>=960?'SFC':p.pres>=880?'925':p.pres>=780?'850':p.pres>=620?'700':'500';
+    var status=dep<=2?'Saturated':dep<=5?'Humid':dep<=10?'Moderate':'Dry';
+    return label+':'+status;
+  }).join(' | ');
+
+  /* 2. TEMPERATURE INVERSION: check between consecutive key levels */
+  var hasInversion=false,invPres='',invStrength=0;
+  for(var i=1;i<keyPoints.length;i++){
+    if(keyPoints[i].temp>keyPoints[i-1].temp){
+      hasInversion=true;
+      invPres=Math.round(keyPoints[i-1].pres)+'-'+Math.round(keyPoints[i].pres)+' hPa';
+      invStrength=keyPoints[i].temp-keyPoints[i-1].temp;
+      break;
     }
   }
-  var hasInversion=inversions.length>0;
-  var invDesc=hasInversion?'Inversion at '+inversions[0].startPres+'-'+inversions[0].endPres+' hPa ('+inversions[0].strength.toFixed(1)+'C warming). Stable layer can trap haze, fog, or pollutants.':'No significant inversion. Air cools steadily with altitude (normal lapse rate).';
+  var invDesc=hasInversion?'Inversion at '+invPres+' ('+invStrength.toFixed(1)+'C warming). Stable layer can trap haze, fog, or pollutants.':'No inversion at key levels. Air cools steadily with altitude (normal lapse rate).';
   var invStatus=hasInversion?'Present':'None';
   var invColor=hasInversion?'var(--wrn)':'var(--suc)';
 
-  /* 3. LAPSE RATE: calculate for the 850-500 hPa layer (standard severe weather layer) */
+  /* 3. LAPSE RATE: calculate for 850-500 hPa using the key level points */
   function presToHeight(pres){
     return 44330*(1-Math.pow(pres/1013.25,0.1903));
   }
-  var p850=null,p500=null;
-  for(var j=0;j<data.length;j++){
-    if(!p850&&data[j].pres<=850)p850=data[j];
-    if(!p500&&data[j].pres<=500)p500=data[j];
-  }
+  var p850=keyPoints.find(function(p){return p.pres<=880&&p.pres>=780});
+  var p500=keyPoints.find(function(p){return p.pres<=620&&p.pres>=420});
   var lapseRate=null,lapseStatus,lapseColor,lapseDesc;
   if(p850&&p500){
     var tempChange=p500.temp-p850.temp;
@@ -3605,17 +3624,16 @@ function renderSoundingSummary(profile){
     lapseStatus='N/A';lapseColor='var(--t3)';lapseDesc='Insufficient data for 850-500 hPa layer calculation.'
   }
 
-  /* 4. LOW-LEVEL MOISTURE: average dewpoint depression in the surface-850 hPa layer */
+  /* 4. LOW-LEVEL MOISTURE: average dewpoint depression of SFC, 925, 850 key points */
+  var llPoints=keyPoints.filter(function(p){return p.pres>=780});
   var llDep=0,llCount=0;
-  for(var k=0;k<data.length;k++){
-    if(data[k].pres>=850){
-      var dep=data[k].temp-data[k].dwpt;
-      if(!isNaN(dep)){llDep+=dep;llCount++}
-    }else{break}
-  }
+  llPoints.forEach(function(p){
+    var dep=p.temp-p.dwpt;
+    if(!isNaN(dep)){llDep+=dep;llCount++}
+  });
   var llAvg=llCount>0?llDep/llCount:999;
   var llStatus,llColor,llDesc;
-  if(llAvg<=2){llStatus='Moist';llColor='#1e40af';llDesc='Near-surface air is saturated ('+llAvg.toFixed(1)+'C depression). Fog or low clouds likely.'}
+  if(llAvg<=2){llStatus='Moist';llColor='#1e40af';llDesc='Near-surface key levels saturated ('+llAvg.toFixed(1)+'C depression). Fog or low clouds likely.'}
   else if(llAvg<=5){llStatus='Humid';llColor='#14b8a6';llDesc='Moderate low-level moisture ('+llAvg.toFixed(1)+'C depression). Fuel moisture available for storms.'}
   else if(llAvg<=10){llStatus='Moderate';llColor='#34d399';llDesc='Some low-level moisture ('+llAvg.toFixed(1)+'C depression). May need more humid air for storm initiation.'}
   else{llStatus='Dry';llColor='#fb923c';llDesc='Dry low-level air ('+llAvg.toFixed(1)+'C depression). Storms unlikely without moisture advection.'}
@@ -3624,7 +3642,7 @@ function renderSoundingSummary(profile){
   var html='<div class="senv-summary">';
   html+='<div class="senv-summary-title"><i class="fas fa-calculator"></i> Sounding Summary Analysis</div>';
   html+='<div class="senv-summary-grid">';
-  html+='<div class="senv-summary-card"><div class="senv-summary-label">Overall Moisture</div><div class="senv-summary-val" style="color:'+moistureColor+'">'+moistureStatus+'</div><div class="senv-summary-desc">'+moistureDesc+'</div><div class="senv-summary-badge" style="background:'+moistureColor+'22;color:'+moistureColor+'">Avg depression: '+avgDep.toFixed(1)+'C</div></div>';
+  html+='<div class="senv-summary-card"><div class="senv-summary-label">Overall Moisture (Key Levels)</div><div class="senv-summary-val" style="color:'+moistureColor+'">'+moistureStatus+'</div><div class="senv-summary-desc">'+moistureDesc+'<br><span style="font-size:8px;color:var(--t3);font-family:JetBrains Mono,monospace">'+levelBreakdown+'</span></div><div class="senv-summary-badge" style="background:'+moistureColor+'22;color:'+moistureColor+'">Avg depression: '+avgDep.toFixed(1)+'C</div></div>';
   html+='<div class="senv-summary-card"><div class="senv-summary-label">Temperature Inversion</div><div class="senv-summary-val" style="color:'+invColor+'">'+invStatus+'</div><div class="senv-summary-desc">'+invDesc+'</div></div>';
   html+='<div class="senv-summary-card"><div class="senv-summary-label">Lapse Rate (850-500 hPa)</div><div class="senv-summary-val" style="color:'+lapseColor+'">'+lapseStatus+'</div><div class="senv-summary-desc">'+lapseDesc+'</div></div>';
   html+='<div class="senv-summary-card"><div class="senv-summary-label">Low-Level Moisture (SFC-850)</div><div class="senv-summary-val" style="color:'+llColor+'">'+llStatus+'</div><div class="senv-summary-desc">'+llDesc+'</div></div>';
