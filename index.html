@@ -4022,18 +4022,19 @@ async function fetchRainCounty(county){
     else if(firstRainHour===1)rainTimeText='In ~1 hour';
     else rainTimeText='In ~'+firstRainHour+' hours';
   }
-  /* Intensity score (1-10 scale based on max hourly precipitation rate) */
+  /* Intensity score (1-10 scale based on max hourly precipitation rate).
+     Calibrated so that ~1.5mm/hr = 5/10 (moderate rain). */
   var intensityScore=0;
   if(maxIntensity>0){
-    if(maxIntensity>=10)intensityScore=10;
-    else if(maxIntensity>=7.6)intensityScore=9;
-    else if(maxIntensity>=5)intensityScore=8;
+    if(maxIntensity>=8)intensityScore=10;
+    else if(maxIntensity>=6)intensityScore=9;
+    else if(maxIntensity>=4.5)intensityScore=8;
     else if(maxIntensity>=3)intensityScore=7;
-    else if(maxIntensity>=2.5)intensityScore=6;
-    else if(maxIntensity>=2)intensityScore=5;
-    else if(maxIntensity>=1.5)intensityScore=4;
-    else if(maxIntensity>=1)intensityScore=3;
-    else if(maxIntensity>=0.5)intensityScore=2;
+    else if(maxIntensity>=2)intensityScore=6;
+    else if(maxIntensity>=1.5)intensityScore=5;
+    else if(maxIntensity>=1)intensityScore=4;
+    else if(maxIntensity>=0.5)intensityScore=3;
+    else if(maxIntensity>=0.2)intensityScore=2;
     else intensityScore=1;
   }
   /* Area score (1-10 scale based on how many of the 2 hours have precip) */
