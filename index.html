@@ -2222,7 +2222,7 @@ function screenshotPanel(panelId,btn){
     var logoInner='<img src="'+CONFIG.logoUrl+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
     brandEl=document.createElement('div');
     brandEl.className='shot-brand-footer';
-    brandEl.style.cssText='display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:8px 12px;margin-top:8px;border-top:1px solid var(--bdr);font-size:8px;color:var(--t3)';
+    brandEl.style.cssText='display:flex;align-items:center;gap:6px;justify-content:center;padding:8px 12px;margin-top:8px;border-top:1px solid var(--bdr);font-size:8px;color:var(--t3)';
     brandEl.innerHTML='<span style="font-family:JetBrains Mono,monospace">'+stampStr+' '+tzShort+'</span><div style="width:16px;height:16px;border-radius:50%;overflow:hidden;border:1px solid var(--acc);flex-shrink:0">'+logoInner+'</div><span style="font-weight:700;color:var(--t1)">'+CONFIG.siteName+'</span>';
     panel.appendChild(brandEl);
   }
