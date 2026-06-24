@@ -2595,6 +2595,14 @@ async function fetchNwsObservation(loc){
         /* Update the Current panel with NWS observation data.
            NWS returns values in metric units (Celsius, km/h, hPa, meters).
            Convert to the same units Open-Meteo uses (Fahrenheit, mph, inHg). */
+        /* Override the weather condition text with NWS textDescription
+           (e.g., "Rain Fog/Mist", "Light Rain") instead of Open-Meteo's
+           generic weather code mapping (e.g., "Overcast"). The NWS
+           textDescription is the official observation and includes present
+           weather phenomena (rain, fog, mist) that Open-Meteo misses. */
+        if(p.textDescription){
+          document.getElementById('cCd').textContent=p.textDescription;
+        }
         if(p.temperature&&p.temperature.value!=null){
           document.getElementById('cTmp').textContent=Math.round(p.temperature.value*9/5+32)+'°F';
         }
