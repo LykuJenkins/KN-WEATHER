@@ -2501,6 +2501,8 @@ function setLoc(key){
   });
   /* Reload all per-location data */
   fWx();fDWML();fAl();rMeteo();fGridpoint();
+  /* Re-render the rain tracker for the newly selected county */
+  refreshRainTrackerForCounty();
 }
 
 /* Update panels with dynamicTitle=true to include the current location label.
@@ -3924,6 +3926,14 @@ async function fRainTracker(){
   }
 }
 
+/* When the user switches counties, re-render the rain tracker to show
+   only the newly selected county. Called from setLoc(). */
+function refreshRainTrackerForCounty(){
+  if(rtCache.data){
+    renderRainTracker(rtCache.data);
+  }
+}
+
 async function fetchRainCounty(county){
   var url='https://api.open-meteo.com/v1/forecast?latitude='+county.lat+'&longitude='+county.lon+
     '&current=precipitation,weather_code'+
@@ -3998,8 +4008,14 @@ async function fetchRainCounty(county){
 function renderRainTracker(data){
   var content=document.getElementById('rtContent');
   if(!content)return;
+  /* Map CUR_LOC to county name for filtering */
+  var countyMap={vanburen:'Van Buren County',allegan:'Allegan County',kalamazoo:'Kalamazoo County'};
+  var targetCounty=countyMap[CUR_LOC]||'Van Buren County';
+  /* Filter to only the selected county */
+  var filtered=data.filter(function(c){return c.name===targetCounty});
+  if(!filtered.length)filtered=data;  /* fallback: show all if no match */
   var html='<div class="rt-grid">';
-  data.forEach(function(c){
+  filtered.forEach(function(c){
     var precipIn=(c.totalPrecip/25.4).toFixed(2);
     var currentIn=(c.currentPrecip/25.4).toFixed(2);
     html+='<div class="rt-card '+c.intensityClass+'">';
