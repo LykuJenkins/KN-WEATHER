@@ -3949,9 +3949,9 @@ async function fetchRainCounty(county){
   for(var i=0;i<times.length;i++){
     if(new Date(times[i])<=now)currentIdx=i;else break;
   }
-  /* Get next 12 hours of data */
+  /* Get next 2 hours of data */
   var nextHours=[];
-  for(var i=currentIdx;i<Math.min(currentIdx+12,times.length);i++){
+  for(var i=currentIdx;i<Math.min(currentIdx+2,times.length);i++){
     nextHours.push({
       time:times[i],
       precip:d.hourly.precipitation[i]||0,
@@ -3986,8 +3986,8 @@ async function fetchRainCounty(county){
   }else{
     status='Clear';intensityClass='clear';
   }
-  /* Time until rain */
-  var rainTimeText='No rain expected';
+  /* Time until rain (within 2-hour window) */
+  var rainTimeText='No rain in 2 hours';
   if(firstRainHour!==null){
     if(firstRainHour===0)rainTimeText='Raining now';
     else if(firstRainHour===1)rainTimeText='In ~1 hour';
@@ -4007,7 +4007,7 @@ async function fetchRainCounty(county){
     else if(maxIntensity>=0.5)intensityScore=2;
     else intensityScore=1;
   }
-  /* Area score (1-10 scale based on how many of the 12 hours have precip) */
+  /* Area score (1-10 scale based on how many of the 2 hours have precip) */
   var rainHours=0;
   for(var i=0;i<nextHours.length;i++){
     if(nextHours[i].precip>0)rainHours++;
@@ -4019,7 +4019,7 @@ async function fetchRainCounty(county){
      0 = raining here, higher = farther away. */
   var distanceText='At this location';
   if(currentPrecip===0&&firstRainHour===null){
-    distanceText='No rain nearby';
+    distanceText='No rain within 2 hours';
   }else if(currentPrecip===0&&firstRainHour!==null){
     /* Rain is coming but not here yet - estimate distance from time */
     var speedMph=18;  /* average rain system speed ~18 mph */
@@ -4063,7 +4063,7 @@ function renderRainTracker(data){
     html+='</div>';
     /* Info rows */
     html+='<div class="rt-info"><span class="rt-info-label">Current Rain</span><span class="rt-info-val">'+currentIn+' in</span></div>';
-    html+='<div class="rt-info"><span class="rt-info-label">Next 12hr Total</span><span class="rt-info-val">'+precipIn+' in</span></div>';
+    html+='<div class="rt-info"><span class="rt-info-label">Next 2hr Total</span><span class="rt-info-val">'+precipIn+' in</span></div>';
     html+='<div class="rt-info"><span class="rt-info-label">Max Chance</span><span class="rt-info-val">'+c.maxPop+'%</span></div>';
     html+='<div class="rt-info"><span class="rt-info-label">Rain Expected</span><span class="rt-info-val">'+c.rainTimeText+'</span></div>';
     /* Distance / Intensity / Area with progress bars */
@@ -4092,7 +4092,7 @@ function renderRainTracker(data){
     html+='<div class="rt-bars-row">';
     for(var i=0;i<c.nextHours.length;i++){
       var t=new Date(c.nextHours[i].time);
-      var label=(i%3===0)?t.toLocaleTimeString('en-US',{hour:'numeric',hour12:true}):'';
+      var label=t.toLocaleTimeString('en-US',{hour:'numeric',hour12:true});
       html+='<div class="rt-bar-cell">'+label+'</div>';
     }
     html+='</div>';
