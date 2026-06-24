@@ -4022,11 +4022,10 @@ async function fetchRainCounty(county){
     distanceText='No rain nearby';
   }else if(currentPrecip===0&&firstRainHour!==null){
     /* Rain is coming but not here yet - estimate distance from time */
-    var speedKmh=30;  /* average rain system speed ~30 km/h */
-    var distanceKm=firstRainHour*speedKmh;
-    if(distanceKm<1)distanceText='At this location';
-    else if(distanceKm<10)distanceText='~'+Math.round(distanceKm)+' km away';
-    else distanceText='~'+Math.round(distanceKm)+' km away';
+    var speedMph=18;  /* average rain system speed ~18 mph */
+    var distanceMi=firstRainHour*speedMph;
+    if(distanceMi<1)distanceText='At this location';
+    else distanceText='~'+Math.round(distanceMi)+' miles away';
   }
   return{
     name:county.name,
