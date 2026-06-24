@@ -2547,22 +2547,41 @@ async function fWx(){
 async function fetchNwsObservation(loc){
   if(!loc)return;
   try{
-    /* Step 1: Get grid info from NWS points API */
-    var pr=await Promise.race([fetch(url.points(loc),{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
-    if(!pr.ok)return;
-    var pd=await pr.json();
-    var gridId=pd.properties.gridId;
-    var gridX=pd.properties.gridX;
-    var gridY=pd.properties.gridY;
-    /* Step 2: Get nearest observation stations */
-    var sr=await Promise.race([fetch('https://api.weather.gov/gridpoints/'+gridId+'/'+gridX+','+gridY+'/stations',{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
-    if(!sr.ok)return;
-    var sd=await sr.json();
-    var stations=sd.features||[];
-    if(!stations.length)return;
-    /* Try each station (up to 3) until we get a valid observation */
-    for(var si=0;si<Math.min(3,stations.length);si++){
-      var stationId=stations[si].properties.stationIdentifier;
+    /* Preferred station per county - uses the most representative station
+       for each county rather than just the geographically nearest one.
+       This ensures Van Buren shows South Haven data, not Kalamazoo data. */
+    var preferredStations={
+      vanburen:['KLWA','KBEH','KAZO'],      /* South Haven -> Benton Harbor -> Kalamazoo */
+      allegan:['KBIV','KAZO','KBTL'],       /* Holland -> Kalamazoo -> Battle Creek */
+      kalamazoo:['KAZO','KBTL','KLWA']      /* Kalamazoo -> Battle Creek -> South Haven */
+    };
+    var preferred=preferredStations[loc.key]||[];
+
+    /* Try preferred stations first, then fall back to NWS nearest stations */
+    var stationIds=preferred.slice();
+    /* Also get NWS nearest stations as fallback */
+    try{
+      var pr=await Promise.race([fetch(url.points(loc),{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+      if(pr.ok){
+        var pd=await pr.json();
+        var gridId=pd.properties.gridId;
+        var gridX=pd.properties.gridX;
+        var gridY=pd.properties.gridY;
+        var sr=await Promise.race([fetch('https://api.weather.gov/gridpoints/'+gridId+'/'+gridX+','+gridY+'/stations',{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+        if(sr.ok){
+          var sd=await sr.json();
+          var nwsStations=sd.features||[];
+          nwsStations.forEach(function(s){
+            var sid=s.properties.stationIdentifier;
+            if(stationIds.indexOf(sid)===-1)stationIds.push(sid);
+          });
+        }
+      }
+    }catch(e){/* fall back to preferred only */}
+
+    /* Try each station until we get a valid observation (max 5) */
+    for(var si=0;si<Math.min(5,stationIds.length);si++){
+      var stationId=stationIds[si];
       try{
         var or=await Promise.race([fetch('https://api.weather.gov/stations/'+stationId+'/observations?limit=1',{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
         if(!or.ok)continue;
