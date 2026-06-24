@@ -1117,7 +1117,7 @@ var PANELS=[
     badge:null,badgeClass:null,gridClass:'gf',
     updateId:'upd-afd',refreshFn:'fAFD',collapsible:true,tab:'nws',
     actions:[{type:'copy',target:'afdC',label:'Copy Discussion',icon:'fa-copy'}],
-    shotWidth:800,  /* text-heavy panel: capture at 800px so the AFD text fills the width without huge blank space at right */
+    shotWidth:600,  /* text-heavy panel: capture at 600px so the AFD text fills the width without huge blank space at right */
     body:'<div class="dc" id="afdC"><div class="lt"><i class="fas fa-spinner"></i>Loading...</div></div>'
   },
   /* 9. NWS GRR Feed (RSS) */
@@ -2188,21 +2188,25 @@ function screenshotPanel(panelId,btn){
   panel.style.width=shotWidth+'px';
   panel.style.maxWidth=shotWidth+'px';
 
-  /* Step 3b: Hide action buttons and insert a brand stamp (KN logo + date/time)
-     in their place so the screenshot shows the source + when it was captured.
-     The panel's existing "Updated HH:MM" timestamp stays (it shows when the
-     data was last refreshed); the brand stamp shows when the screenshot was
-     exported. */
+  /* Step 3b: Hide action buttons during capture. Instead of replacing the
+     header actions with a brand stamp, we:
+     (a) Highlight the update timestamp green (like "LIVE" badges on other panels)
+     (b) Add a thin brand footer at the bottom-right of the panel */
   panel.classList.add('capturing');
   document.body.classList.add('capturing');
+
+  /* Highlight the update timestamp green */
+  var updEl=panel.querySelector('.ut');
+  if(updEl){
+    updEl.style.color='#34d399';
+    updEl.style.fontWeight='700';
+  }
+
+  /* Add a thin brand footer at the bottom of the panel */
   var chRight=panel.querySelector('.ch-right');
   var brandEl=null;
   if(chRight){
-    /* Build the timestamp: full date + time in the configured timezone.
-       Use Intl.DateTimeFormat with timeZoneName:'short' to get the
-       abbreviated timezone (EDT in summer, EST in winter). */
     var stampDate=new Date();
-    /* Get the short timezone name (e.g. "EDT", "EST") for the configured tz */
     var tzShort='EDT';
     try{
       var tzFmt=new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,timeZoneName:'short'});
@@ -2210,19 +2214,17 @@ function screenshotPanel(panelId,btn){
       var tzPart=tzParts.find(function(p){return p.type==='timeZoneName'});
       if(tzPart&&tzPart.value)tzShort=tzPart.value;
     }catch(e){/* fall back to EDT */}
-    /* Build the date/time string (without the timezone - we append tzShort separately) */
     var stampStr=stampDate.toLocaleString('en-US',{
       timeZone:CONFIG.tz,
       weekday:'short',year:'numeric',month:'short',day:'numeric',
       hour:'2-digit',minute:'2-digit',hour12:true
     });
-    /* Build the logo element - use the configured logo URL with KN fallback */
     var logoInner='<img src="'+CONFIG.logoUrl+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
     brandEl=document.createElement('div');
-    brandEl.className='shot-brand';
-    brandEl.innerHTML='<div class="shot-brand-logo">'+logoInner+'</div><div class="shot-brand-text"><div class="shot-brand-name">'+CONFIG.siteName+'</div><div class="shot-brand-stamp">'+stampStr+' '+tzShort+'</div></div>';
-    /* Insert the brand at the start of .ch-right (where actions were), before the update timestamp */
-    chRight.insertBefore(brandEl,chRight.firstChild);
+    brandEl.className='shot-brand-footer';
+    brandEl.style.cssText='display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:8px 12px;margin-top:8px;border-top:1px solid var(--bdr);font-size:8px;color:var(--t3)';
+    brandEl.innerHTML='<span style="font-family:JetBrains Mono,monospace">'+stampStr+' '+tzShort+'</span><div style="width:16px;height:16px;border-radius:50%;overflow:hidden;border:1px solid var(--acc);flex-shrink:0">'+logoInner+'</div><span style="font-weight:700;color:var(--t1)">'+CONFIG.siteName+'</span>';
+    panel.appendChild(brandEl);
   }
 
   /* Step 4: run html2canvas with iframe and cross-origin image handling.
@@ -2354,6 +2356,8 @@ function screenshotPanel(panelId,btn){
       panel.classList.remove('capturing');
       document.body.classList.remove('capturing');
       if(brandEl&&brandEl.parentNode)brandEl.parentNode.removeChild(brandEl);
+      /* Restore update timestamp styles */
+      if(updEl){updEl.style.color='';updEl.style.fontWeight=''}
       /* Restore collapsed sections */
       collapsedSections.forEach(function(c){c.classList.add('collapsed')});
       bodies.forEach(function(b,i){b.style.maxHeight=savedMaxHeight[i]||''});
@@ -2371,6 +2375,7 @@ function screenshotPanel(panelId,btn){
       panel.classList.remove('capturing');
       document.body.classList.remove('capturing');
       if(brandEl&&brandEl.parentNode)brandEl.parentNode.removeChild(brandEl);
+      if(updEl){updEl.style.color='';updEl.style.fontWeight=''}
       collapsedSections.forEach(function(c){c.classList.add('collapsed')});
       bodies.forEach(function(b,i){b.style.maxHeight=savedMaxHeight[i]||''});
       showToast('Screenshot failed: '+(err.message||err),true);
