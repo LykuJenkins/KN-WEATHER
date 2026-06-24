@@ -4231,6 +4231,61 @@ function renderKnNowcast(d){
   content.innerHTML=html;
 }
 
+/* Build a list of candidate sounding times to try, going backwards
+   from the most recent expected sounding. Each candidate is 12 hours
+   earlier than the previous one. Returns an array of:
+   {year, month, from, to, ageHours}
+   where ageHours is how old the sounding is relative to now. */
+function buildSoundingCandidates(maxCandidates){
+  var candidates=[];
+  var now=new Date();
+  var utcY=now.getUTCFullYear();
+  var utcM=now.getUTCMonth();  /* 0-11 */
+  var utcD=now.getUTCDate();
+  var utcH=now.getUTCHours();
+
+  /* Start with the most recent expected sounding */
+  var startHour,startDay,startMonth,startYear;
+  if(utcH>=14){
+    startHour=12;
+  }else if(utcH>=2){
+    startHour=0;
+  }else{
+    startHour=12;
+    var yest=new Date(Date.UTC(utcY,utcM,utcD-1));
+    startDay=yest.getUTCDate();
+    startMonth=yest.getUTCMonth();
+    startYear=yest.getUTCFullYear();
+  }
+
+  /* If we didn't adjust for yesterday, use today */
+  if(startDay===undefined){
+    startDay=utcD;
+    startMonth=utcM;
+    startYear=utcY;
+  }
+
+  /* Generate candidates going back 12 hours at a time */
+  for(var i=0;i<maxCandidates;i++){
+    var d=new Date(Date.UTC(startYear,startMonth,startDay,startHour-i*12));
+    var dd=('0'+d.getUTCDate()).slice(-2);
+    var hh=('0'+d.getUTCHours()).slice(-2);
+    var mm=('0'+(d.getUTCMonth()+1)).slice(-2);
+    var yy=d.getUTCFullYear();
+    /* Calculate age in hours */
+    var ageMs=now.getTime()-d.getTime();
+    var ageHours=ageMs/(1000*60*60);
+    candidates.push({
+      year:String(yy),
+      month:mm,
+      from:dd+hh,
+      to:dd+hh,
+      ageHours:Math.round(ageHours)
+    });
+  }
+  return candidates;
+}
+
 async function fStormEnv(){
   var st=STORM_ENV_STATIONS[senvActStation]||STORM_ENV_STATIONS[0];
   var content=document.getElementById('senvContent');
@@ -4244,36 +4299,37 @@ async function fStormEnv(){
   }
   content.innerHTML='<div class="lt"><i class="fas fa-spinner"></i> Fetching sounding for '+st.label+'...</div>';
   try{
-    var snd=latestSoundingTime();
-    var url='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+snd.year+'&MONTH='+snd.month+'&FROM='+snd.from+'&TO='+snd.to+'&STNM='+st.stnm;
-    var txt=await fP(url);
-    if(!txt||txt.length<100){
-      /* Try previous sounding (12h earlier) */
-      var prevHour=snd.from.substring(2,4)==='12'?'00':'12';
-      var prevDay,prevMonth,prevYear;
-      if(prevHour==='00'&&snd.from.substring(0,2)==='01'){
-        /* Going back to previous month */
-        var prev=new Date(Date.UTC(parseInt(snd.year),parseInt(snd.month)-1,0));
-        prevDay=('0'+prev.getUTCDate()).slice(-2);
-        prevMonth=('0'+(prev.getUTCMonth()+1)).slice(-2);
-        prevYear=prev.getUTCFullYear();
-      }else if(prevHour==='00'){
-        prevDay=('0'+(parseInt(snd.from.substring(0,2))-1)).slice(-2);
-        prevMonth=snd.month;
-        prevYear=snd.year;
-      }else{
-        prevDay=snd.from.substring(0,2);
-        prevMonth=snd.month;
-        prevYear=snd.year;
-      }
-      url='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+prevYear+'&MONTH='+prevMonth+'&FROM='+prevDay+prevHour+'&TO='+prevDay+prevHour+'&STNM='+st.stnm;
-      txt=await fP(url);
+    /* Build a list of candidate sounding times to try, in order:
+       1. Most recent expected sounding (00Z or 12Z)
+       2. Previous sounding (12h earlier)
+       3. 24h earlier
+       4. 36h earlier
+       This handles cases where the Wyoming site hasn't posted the latest
+       sounding yet, or where a balloon launch was missed. */
+    var candidates=buildSoundingCandidates(4);
+    var txt=null,usedCandidate=null;
+    for(var ci=0;ci<candidates.length;ci++){
+      var c=candidates[ci];
+      var url='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+c.year+'&MONTH='+c.month+'&FROM='+c.from+'&TO='+c.to+'&STNM='+st.stnm;
+      try{
+        var attempt=await fP(url);
+        if(attempt&&attempt.length>100&&attempt.indexOf('Observation time')>=0){
+          txt=attempt;
+          usedCandidate=c;
+          break;
+        }
+      }catch(e){/* try next candidate */}
     }
-    if(!txt||txt.length<100){
-      content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation" style="margin-right:4px"></i>Sounding data unavailable for '+st.label+'</div>';
+
+    if(!txt){
+      content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation" style="margin-right:4px"></i>Sounding data unavailable for '+st.label+'. No recent soundings found in the last 36 hours.</div>';
       return;
     }
     var parsed=parseWyomingSounding(txt);
+    /* Add age indicator to the station label if using an older sounding */
+    if(usedCandidate&&usedCandidate.ageHours>12){
+      parsed._ageLabel=' ('+Math.round(usedCandidate.ageHours/12)*12+'h old)';
+    }
     senvCache[cacheKey]={data:parsed,time:now};
     renderStormEnv(parsed,st);
     mkUp('senv');
@@ -4290,7 +4346,8 @@ function renderStormEnv(d,st){
   var liB=liBadge(d.liftedIndex);
   var html='';
   /* Station header */
-  html+='<div class="sndenv-station"><i class="fas fa-tower-broadcast"></i>'+st.label+'</div>';
+  var ageLabel=d._ageLabel||'';
+  html+='<div class="sndenv-station"><i class="fas fa-tower-broadcast"></i>'+st.label+(ageLabel?' <span style="color:var(--wrn);font-size:9px">'+ageLabel+'</span>':'')+'</div>';
   html+='<div class="sndenv-time">Obs: '+d.obsTime+' UTC · '+st.sub+'</div>';
   /* Instability parameters */
   html+='<div class="sndenv-cat">Instability</div>';
