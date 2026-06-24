@@ -547,6 +547,29 @@ body.capturing .mom-mode-toggle{display:none}
 .senv-level-moisture{font-size:8px;font-weight:700;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:3px;display:inline-block}
 .sndenv-cat:first-of-type{margin-top:0}
 
+/* Rain Tracker panel */
+.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:4px}
+.rt-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:12px;border-left:3px solid var(--bdr)}
+.rt-card.clear{border-left-color:#34d399}
+.rt-card.light{border-left-color:#60a5fa}
+.rt-card.moderate{border-left-color:#fbbf24}
+.rt-card.heavy{border-left-color:#ef4444}
+.rt-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.rt-county{font-size:12px;font-weight:700;color:var(--t1)}
+.rt-status{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:4px}
+.rt-status.clear{background:rgba(52,211,153,.15);color:#34d399}
+.rt-status.light{background:rgba(96,165,250,.15);color:#60a5fa}
+.rt-status.moderate{background:rgba(251,191,36,.15);color:#fbbf24}
+.rt-status.heavy{background:rgba(239,68,68,.15);color:#ef4444}
+.rt-info{display:flex;justify-content:space-between;font-size:10px;margin:3px 0}
+.rt-info-label{color:var(--t3)}
+.rt-info-val{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--t2)}
+.rt-timeline{display:flex;align-items:flex-end;gap:2px;height:32px;margin-top:8px}
+.rt-bar{flex:1;border-radius:2px 2px 0 0;min-height:2px;transition:height .3s,background .3s;position:relative}
+.rt-bar-label{font-size:6px;color:var(--t3);text-align:center;margin-top:2px}
+.rt-bars-row{display:flex;gap:2px;margin-top:2px}
+.rt-bar-cell{flex:1;text-align:center;font-size:6px;color:var(--t3)}
+
 /* Nowcast Engine panel */
 .nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
 .nc-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px}
@@ -1040,6 +1063,13 @@ var PANELS=[
     badge:'Live',badgeClass:'cb-l',gridClass:'g1',extraClass:'cu',
     updateId:'upd-cur',refreshFn:'fWx',collapsible:true,tab:'current',
     body:'<div class="hero"><div class="ci" id="cIco"><i class="fas fa-cloud-sun"></i></div><div class="tmp" id="cTmp">--&deg;F</div><div class="fl" id="cFl">Feels like --&deg;F</div><div class="cd" id="cCd">Loading...</div><div class="nws-line" id="nwsLine" style="display:none"><strong>NWS:</strong> <span id="nwsTxt"></span></div></div><div class="dg"><div class="di"><div class="dl">Humidity</div><div class="dv" id="dHu">--<span class="du">%</span></div></div><div class="di"><div class="dl">Dew Point</div><div class="dv" id="dDw">--<span class="du">&deg;F</span></div></div><div class="di"><div class="dl">Wind</div><div class="dv" id="dWi">--<span class="du">mph</span></div></div><div class="di"><div class="dl">Pressure</div><div class="dv" id="dPr">--<span class="du">inHg</span></div></div></div><div class="rufus-container" id="rufusContainer"><div class="rufus-label">Rufus the Weather Dog</div><img class="rufus-img" id="rufusImg" src="./rufus/default.jpg" alt="Rufus the Weather Dog"><div class="rufus-caption" id="rufusCaption">Rufus is checking the sky...</div></div>'
+  },
+  /* 1b. Rain Tracker (rain proximity for all 3 counties) */
+  {
+    id:'rainTracker',title:'Rain Tracker',icon:'fa-cloud-rain',
+    badge:'LIVE',badgeClass:'cb-l',gridClass:'gf',
+    updateId:'upd-rt',refreshFn:'fRainTracker',collapsible:true,tab:'current',
+    body:'<div id="rtContent"><div class="lt"><i class="fas fa-spinner"></i> Loading rain data...</div></div>'
   },
   /* 2. KN Nowcast (user-friendly summary on Current Conditions tab) */
   {
@@ -3857,6 +3887,155 @@ function renderNowcastAlerts(d){
   });
   html+='</div>';
   el.innerHTML=html;
+}
+
+/* ── Rain Tracker ────────────────────────────────────────────────────────────
+   Shows rain proximity, intensity, timing, and probability for each of the
+   three monitored counties. Uses Open-Meteo hourly precipitation data for
+   the center of each county. Updates every refresh cycle. */
+
+var RAIN_COUNTIES=[
+  {name:'Van Buren County',lat:42.25,lon:-86.02},
+  {name:'Allegan County',lat:42.59,lon:-85.89},
+  {name:'Kalamazoo County',lat:42.25,lon:-85.53}
+];
+var rtCache={data:null,time:0};
+
+async function fRainTracker(){
+  var content=document.getElementById('rtContent');
+  if(!content)return;
+  var now=Date.now();
+  if(rtCache.data&&(now-rtCache.time)<5*60*1000){
+    renderRainTracker(rtCache.data);
+    mkUp('rt');
+    return;
+  }
+  content.innerHTML='<div class="lt"><i class="fas fa-spinner"></i> Fetching rain data...</div>';
+  try{
+    var results=await Promise.all(RAIN_COUNTIES.map(function(c){
+      return fetchRainCounty(c);
+    }));
+    rtCache={data:results,time:now};
+    renderRainTracker(results);
+    mkUp('rt');
+  }catch(e){
+    console.error('Rain tracker error:',e);
+    content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation"></i> Rain data unavailable</div>';
+  }
+}
+
+async function fetchRainCounty(county){
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+county.lat+'&longitude='+county.lon+
+    '&current=precipitation,weather_code'+
+    '&hourly=precipitation,precipitation_probability,weather_code'+
+    '&timezone='+CONFIG.tz+'&forecast_days=2';
+  var r=await fetch(url);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  var d=await r.json();
+  /* Find current hour index */
+  var now=new Date();
+  var times=d.hourly.time;
+  var currentIdx=0;
+  for(var i=0;i<times.length;i++){
+    if(new Date(times[i])<=now)currentIdx=i;else break;
+  }
+  /* Get next 12 hours of data */
+  var nextHours=[];
+  for(var i=currentIdx;i<Math.min(currentIdx+12,times.length);i++){
+    nextHours.push({
+      time:times[i],
+      precip:d.hourly.precipitation[i]||0,
+      pop:d.hourly.precipitation_probability[i]||0,
+      wc:d.hourly.weather_code[i]||0
+    });
+  }
+  /* Calculate summary */
+  var totalPrecip=0;
+  var maxPop=0;
+  var firstRainHour=null;
+  var maxIntensity=0;
+  for(var i=0;i<nextHours.length;i++){
+    totalPrecip+=nextHours[i].precip;
+    if(nextHours[i].pop>maxPop)maxPop=nextHours[i].pop;
+    if(nextHours[i].precip>0&&firstRainHour===null)firstRainHour=i;
+    if(nextHours[i].precip>maxIntensity)maxIntensity=nextHours[i].precip;
+  }
+  /* Determine status */
+  var currentPrecip=d.current?d.current.precipitation:0;
+  var status,intensityClass;
+  if(currentPrecip>0||firstRainHour===0){
+    if(maxIntensity>=7.6){status='Heavy Rain';intensityClass='heavy'}
+    else if(maxIntensity>=2.5){status='Moderate Rain';intensityClass='moderate'}
+    else{status='Light Rain';intensityClass='light'}
+  }else if(firstRainHour!==null){
+    if(maxIntensity>=7.6){status='Heavy Rain Soon';intensityClass='heavy'}
+    else if(maxIntensity>=2.5){status='Rain Approaching';intensityClass='moderate'}
+    else{status='Light Rain Soon';intensityClass='light'}
+  }else if(maxPop>=40){
+    status='Rain Possible';intensityClass='light';
+  }else{
+    status='Clear';intensityClass='clear';
+  }
+  /* Time until rain */
+  var rainTimeText='No rain expected';
+  if(firstRainHour!==null){
+    if(firstRainHour===0)rainTimeText='Raining now';
+    else if(firstRainHour===1)rainTimeText='In ~1 hour';
+    else rainTimeText='In ~'+firstRainHour+' hours';
+  }
+  return{
+    name:county.name,
+    status:status,
+    intensityClass:intensityClass,
+    currentPrecip:currentPrecip,
+    totalPrecip:totalPrecip,
+    maxPop:maxPop,
+    rainTimeText:rainTimeText,
+    nextHours:nextHours
+  };
+}
+
+function renderRainTracker(data){
+  var content=document.getElementById('rtContent');
+  if(!content)return;
+  var html='<div class="rt-grid">';
+  data.forEach(function(c){
+    var precipIn=(c.totalPrecip/25.4).toFixed(2);
+    var currentIn=(c.currentPrecip/25.4).toFixed(2);
+    html+='<div class="rt-card '+c.intensityClass+'">';
+    /* Header: county name + status badge */
+    html+='<div class="rt-card-header">';
+    html+='<div class="rt-county"><i class="fas fa-location-dot" style="color:var(--acc);margin-right:4px;font-size:10px"></i>'+c.name+'</div>';
+    html+='<div class="rt-status '+c.intensityClass+'">'+c.status+'</div>';
+    html+='</div>';
+    /* Info rows */
+    html+='<div class="rt-info"><span class="rt-info-label">Current Rain</span><span class="rt-info-val">'+currentIn+' in</span></div>';
+    html+='<div class="rt-info"><span class="rt-info-label">Next 12hr Total</span><span class="rt-info-val">'+precipIn+' in</span></div>';
+    html+='<div class="rt-info"><span class="rt-info-label">Max Chance</span><span class="rt-info-val">'+c.maxPop+'%</span></div>';
+    html+='<div class="rt-info"><span class="rt-info-label">Rain Expected</span><span class="rt-info-val">'+c.rainTimeText+'</span></div>';
+    /* PoP timeline - 12 hour mini bar chart */
+    html+='<div class="rt-timeline">';
+    for(var i=0;i<c.nextHours.length;i++){
+      var h=c.nextHours[i];
+      var height=Math.max(2,h.pop*0.3);
+      var barColor=h.precip>0?
+        (h.precip>=7.6?'#ef4444':h.precip>=2.5?'#fbbf24':'#60a5fa'):
+        (h.pop>=50?'rgba(96,165,250,.4)':h.pop>=20?'rgba(96,165,250,.2)':'rgba(255,255,255,.08)');
+      html+='<div class="rt-bar" style="height:'+height+'px;background:'+barColor+'" title="'+h.time+': '+h.pop+'%, '+h.precip+'mm"></div>';
+    }
+    html+='</div>';
+    /* Hour labels (every 3 hours) */
+    html+='<div class="rt-bars-row">';
+    for(var i=0;i<c.nextHours.length;i++){
+      var t=new Date(c.nextHours[i].time);
+      var label=(i%3===0)?t.toLocaleTimeString('en-US',{hour:'numeric',hour12:true}):'';
+      html+='<div class="rt-bar-cell">'+label+'</div>';
+    }
+    html+='</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  content.innerHTML=html;
 }
 
 /* ── KN Nowcast (user-friendly summary on Current Conditions tab) ────────────
@@ -6782,7 +6961,7 @@ async function refreshAll(){
        (fAl), alert polygon map (fAlertMap), WWA summary (fWWASummary), the
        static WWA map (rWWA), and road weather cameras (rRoadCams - moved
        to Current Conditions since it's part of the at-a-glance view). */
-    var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA','fKnNowcast'];
+    var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA','fRainTracker','fKnNowcast'];
     var alwaysSyncFns=['rRoadCams'];
     await Promise.all(alwaysFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
     alwaysSyncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
