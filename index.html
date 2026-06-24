@@ -3897,9 +3897,11 @@ function renderNowcastAlerts(d){
    the center of each county. Updates every refresh cycle. */
 
 var RAIN_COUNTIES=[
-  {name:'Van Buren County',lat:42.25,lon:-86.02},
-  {name:'Allegan County',lat:42.59,lon:-85.89},
-  {name:'Kalamazoo County',lat:42.25,lon:-85.53}
+  /* Edge detection points - positioned at the leading edge of each county
+     for early rain detection before it reaches the populated areas. */
+  {name:'Van Buren County',lat:42.351,lon:-86.256},   /* South Haven Airport (KLWA) - lakeshore */
+  {name:'Allegan County',lat:42.746,lon:-86.097},     /* Holland Airport (KBIV) - lakeshore */
+  {name:'Kalamazoo County',lat:42.36,lon:-85.88}      /* Gobles area - western edge, leading approach */
 ];
 var rtCache={data:null,time:0};
 
