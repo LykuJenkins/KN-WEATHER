@@ -2290,12 +2290,19 @@ function screenshotPanel(panelId,btn){
   var crossOriginImgs=[];
   panel.querySelectorAll('img').forEach(function(img){
     var src=img.src||'';
-    /* Skip data URIs (already inline) and same-origin images */
+    /* Skip data URIs (already inline) */
     if(src.startsWith('data:'))return;
-    /* Skip the KN logo (handled separately) */
-    if(img.closest('.shot-brand'))return;
+    /* Convert ALL non-data images to data URIs so html2canvas can render
+       them without taint issues. This includes the profile_picture.png
+       logo in both the header (#logoImg) and the footer brand stamp. */
     crossOriginImgs.push(img);
   });
+  /* Also convert the header logo if it's in the panel (some panels
+     include the full header with the logo) */
+  var headerLogo=document.getElementById('logoImg');
+  if(headerLogo&&panel.contains(headerLogo)&&!crossOriginImgs.indexOf(headerLogo)>=0){
+    if(!headerLogo.src.startsWith('data:'))crossOriginImgs.push(headerLogo);
+  }
 
   function convertImageToDataUrl(img){
     return new Promise(function(resolve){
