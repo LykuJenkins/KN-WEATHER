@@ -1299,6 +1299,13 @@ var PANELS=[
     updateId:'upd-lsr',refreshFn:'fLSR',collapsible:true,tab:'spotting',
     body:'<div id="lsrContent"><div class="lt"><i class="fas fa-spinner"></i> Loading storm reports...</div></div>'
   },
+  /* 19c. Consumers Energy Outage Map - power outage tracking for SW Michigan */
+  {
+    id:'outagemap',title:'Power Outage Map',icon:'fa-bolt',
+    badge:'CE',badgeClass:'cb-l',gridClass:'gf',
+    updateId:null,refreshFn:null,collapsible:true,tab:'spotting',
+    body:'<div class="map-stage"><iframe src="https://www.consumersenergy.com/outagemap" loading="lazy" style="width:100%;height:900px;border:none;border-radius:var(--rs)" title="Consumers Energy Outage Map"></iframe><div class="img-cap">Consumers Energy Outage Map - power outage locations and restoration times (interactive)</div></div>'
+  },
   /* 20. Road Weather Cameras (MiDrive) */
   {
     id:'roadcams',title:'Road Weather Cameras',icon:'fa-video',
