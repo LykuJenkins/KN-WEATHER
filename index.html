@@ -2339,8 +2339,15 @@ function screenshotPanel(panelId,btn){
     var src=img.src||'';
     /* Skip data URIs (already inline) */
     if(src.startsWith('data:'))return;
-    /* Convert ALL non-data images to data URIs so html2canvas can render
-       them without taint issues. This includes the profile_picture.png
+    /* Skip Leaflet map tiles from CORS-friendly servers (CARTO, ESRI).
+       These servers send Access-Control-Allow-Origin: * headers, so
+       html2canvas can capture them directly with useCORS:true without
+       needing data-URL conversion. Converting 20+ tiles via proxy is
+       slow and can fail/corrupt binary data. */
+    if(src.indexOf('basemaps.cartocdn.com')>=0)return;
+    if(src.indexOf('server.arcgisonline.com')>=0)return;
+    /* Convert ALL other non-data images to data URIs so html2canvas can
+       render them without taint issues. This includes the profile_picture.png
        logo in both the header (#logoImg) and the footer brand stamp. */
     crossOriginImgs.push(img);
   });
@@ -2446,6 +2453,30 @@ function screenshotPanel(panelId,btn){
       });
     }
     mapReadyPromise.then(function(){
+    /* Logo safeguard: right before html2canvas runs, explicitly re-set the
+       brand footer logo src to LOGO_DATA_URL and wait for it to load.
+       This handles edge cases where:
+       (a) LOGO_DATA_URL was preloaded AFTER the brand footer was created
+           (so the img got the relative URL and its onerror may have fired)
+       (b) The img's onerror fired prematurely during the conversion phase
+       (c) The img hasn't finished decoding yet
+       By re-setting the src to the cached data URL and awaiting load, we
+       guarantee the logo paints correctly in the screenshot. If LOGO_DATA_URL
+       is null (preload failed), we skip this and rely on the fallback. */
+    var logoSafeguard=Promise.resolve();
+    if(brandEl&&LOGO_DATA_URL){
+      var bImg=brandEl.querySelector('img');
+      if(bImg&&(bImg.naturalWidth===0||!bImg.complete||bImg.style.display==='none')){
+        /* The img failed to load or is hidden. Reset it: un-hide, set the
+           data URL src, and wait for load. */
+        bImg.style.display='';
+        var fb=bImg.nextElementSibling;
+        if(fb)fb.style.display='none';
+        bImg.src=LOGO_DATA_URL;
+        logoSafeguard=waitForImgLoad(bImg);
+      }
+    }
+    logoSafeguard.then(function(){
     /* Now all images are either data URIs or still original (if proxy failed) */
     html2canvas(panel,{
       backgroundColor:'#0e0e15',
@@ -2494,6 +2525,7 @@ function screenshotPanel(panelId,btn){
       bodies.forEach(function(b,i){b.style.maxHeight=savedMaxHeight[i]||''});
       showToast('Screenshot failed: '+(err.message||err),true);
     });
+    });  /* close logoSafeguard.then() */
     });  /* close mapReadyPromise.then() */
   });
 }
@@ -5017,12 +5049,22 @@ function initAlertMap(){
      With Canvas rendering, overlays are drawn as pixels on a <canvas> element
      which html2canvas captures perfectly. */
   alertMapInstance=L.map('alertMap',{scrollWheelZoom:false,preferCanvas:true}).setView([42.15,-86.15],8);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  /* Use CARTO dark tiles instead of OpenStreetMap tiles.
+     This is critical for screenshot exports: CARTO's tile server sends
+     Access-Control-Allow-Origin: * headers, so html2canvas can capture
+     them directly with useCORS:true. OSM tiles do NOT send CORS headers,
+     so html2canvas renders them as blank in screenshots. Additionally,
+     Leaflet's invalidateSize() (called during screenshot capture) can
+     create NEW tile <img> elements that weren't in the original
+     crossOriginImgs list - with CARTO tiles, these new tiles are
+     captured automatically without needing conversion. The dark theme
+     also matches the site aesthetic and makes alert polygon overlays
+     more visible. */
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',{
     maxZoom:18,
-    attribution:'&copy; OpenStreetMap'
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains:'abcd'
   }).addTo(alertMapInstance);
-  /* Dark tile layer option */
-  /* L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png').addTo(alertMapInstance); */
 
   /* Build the legend */
   var legend=document.getElementById('alertMapLegend');
