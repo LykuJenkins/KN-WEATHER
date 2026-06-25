@@ -1418,6 +1418,92 @@ function waitForImgLoad(img){
   });
 }
 
+/* Snapshot a Leaflet map onto a single composite <canvas>. This bypasses
+   all html2canvas + Leaflet issues (CORS taint, transform desync, blank
+   tiles) by drawing the map ourselves:
+   1. Create a canvas matching the map container size.
+   2. Fill with the map's background color.
+   3. Walk every tile <img> in the tile pane and draw it at its current
+      transformed position. Because the browser already loaded the tiles,
+      drawing them to our canvas works for same-origin AND CORS-enabled
+      tile servers (CARTO sends Access-Control-Allow-Origin: *).
+   4. Find the Leaflet overlay pane's <canvas> (vector overlays rendered
+      via preferCanvas:true) and draw it on top.
+   5. Return the composite canvas.
+   The caller replaces the map container's content with this canvas for
+   the html2canvas capture, then restores the original content afterward. */
+function snapshotLeafletMap(map){
+  try{
+    var container=map.getContainer();
+    var w=container.offsetWidth;
+    var h=container.offsetHeight;
+    var canvas=document.createElement('canvas');
+    canvas.width=w;
+    canvas.height=h;
+    canvas.style.width=w+'px';
+    canvas.style.height=h+'px';
+    var ctx=canvas.getContext('2d');
+    /* Fill background */
+    ctx.fillStyle='#0a0a12';
+    ctx.fillRect(0,0,w,h);
+
+    /* Draw all tile images. Leaflet positions tiles using CSS transform:
+       translate3d(x,y,0) on each tile <img>. We parse that transform to
+       get the tile's pixel position and draw the img there. */
+    var tilePane=container.querySelector('.leaflet-tile-pane');
+    if(tilePane){
+      var tiles=tilePane.querySelectorAll('img.leaflet-tile');
+      tiles.forEach(function(tile){
+        if(!tile.complete||tile.naturalWidth===0)return;
+        /* Parse the transform: translate3d(Xpx, Ypx, 0) */
+        var transform=tile.style.transform||'';
+        var m=transform.match(/translate3d\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/);
+        var x=0,y=0;
+        if(m){x=parseFloat(m[1])||0;y=parseFloat(m[2])||0}
+        /* Some tiles use left/top instead of transform */
+        if(!m){
+          if(tile.style.left)x=parseFloat(tile.style.left)||0;
+          if(tile.style.top)y=parseFloat(tile.style.top)||0;
+        }
+        try{ctx.drawImage(tile,x,y)}catch(e){/* skip tainted/broken tile */}
+      });
+    }
+
+    /* Draw the vector overlay canvas (polygons, lines, markers rendered
+       via preferCanvas:true) on top of the tiles. */
+    var overlayPane=container.querySelector('.leaflet-overlay-pane');
+    if(overlayPane){
+      var overlayCanvas=overlayPane.querySelector('canvas');
+      if(overlayCanvas&&overlayCanvas.width>0){
+        try{ctx.drawImage(overlayCanvas,0,0)}catch(e){/* skip */}
+      }
+    }
+
+    /* Draw marker icons (popups, markers using SVG/DIV) - these are in
+       the marker pane as <img> elements positioned via transform. */
+    var markerPane=container.querySelector('.leaflet-marker-pane');
+    if(markerPane){
+      var markerImgs=markerPane.querySelectorAll('img');
+      markerImgs.forEach(function(mi){
+        if(!mi.complete||mi.naturalWidth===0)return;
+        var transform=mi.style.transform||'';
+        var m=transform.match(/translate3d\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/);
+        var x=0,y=0;
+        if(m){x=parseFloat(m[1])||0;y=parseFloat(m[2])||0}
+        /* Center the icon (Leaflet uses margin-left:-50% on marker icons) */
+        var iw=mi.offsetWidth||mi.naturalWidth;
+        var ih=mi.offsetHeight||mi.naturalHeight;
+        try{ctx.drawImage(mi,x-iw/2,y-ih)}catch(e){/* skip */}
+      });
+    }
+
+    return canvas;
+  }catch(e){
+    console.error('snapshotLeafletMap failed:',e);
+    return null;
+  }
+}
+
 /* ── Build header from CONFIG ──────────────────────────────────────────────── */
 function applyConfigToHeader(){
   document.getElementById('logoImg').src=CONFIG.logoUrl;
@@ -2300,7 +2386,14 @@ function screenshotPanel(panelId,btn){
     brandEl=document.createElement('div');
     brandEl.className='shot-brand-footer';
     brandEl.style.cssText='display:flex;align-items:center;gap:6px;justify-content:center;padding:8px 12px;margin-top:8px;border-top:1px solid var(--bdr);font-size:8px;color:var(--t3)';
-    brandEl.innerHTML='<span style="font-family:JetBrains Mono,monospace">'+stampStr+' '+tzShort+'</span><div style="width:16px;height:16px;border-radius:50%;overflow:hidden;border:1px solid var(--acc);flex-shrink:0">'+logoInner+'</div><span style="font-weight:700;color:var(--t1)">'+CONFIG.siteName+'</span>';
+    /* Use the .shot-brand-logo CSS class (same as the WWA alert screenshot
+       brand stamp) for the logo container. This class includes:
+       - width/height 24px (large enough to render the logo clearly)
+       - background:linear-gradient (purple gradient shows even if img fails)
+       - .shot-brand-logo img { width:100%;height:100%;object-fit:cover }
+         ensures the img fills the circle instead of overflowing at its
+         natural 1024x1024 size (which caused blank rendering in html2canvas) */
+    brandEl.innerHTML='<span style="font-family:JetBrains Mono,monospace">'+stampStr+' '+tzShort+'</span><div class="shot-brand-logo">'+logoInner+'</div><span style="font-weight:700;color:var(--t1)">'+CONFIG.siteName+'</span>';
     panel.appendChild(brandEl);
   }
 
@@ -2426,27 +2519,56 @@ function screenshotPanel(panelId,btn){
   }
 
   Promise.all([brandLogoLoadPromise].concat(crossOriginImgs.map(convertImageToDataUrl))).then(function(){
-    /* Special handling for the Alert Polygon Map panel: Leaflet uses
-       transform: translate3d() on tile images and the map container, and
-       html2canvas doesn't always sync those transforms correctly - the base
-       tile layer ends up offset from the vector overlays (purple borders,
-       alert polygons). To fix this:
-       1. Call map.invalidateSize() so Leaflet recomputes its layout to match
-          the new panel width we just set.
-       2. Wait for the map's 'load' event (fires when all visible tiles finish
-          loading) plus a 500ms buffer to let tile transforms settle.
-       3. Then run html2canvas. The vector overlays and tile layer will now be
-          in sync. */
+    /* Special handling for the Alert Polygon Map panel: html2canvas cannot
+       reliably capture Leaflet maps (CORS taint on tiles, transform desync
+       between tile pane and overlay pane, blank tiles after invalidateSize).
+       Instead, we snapshot the map onto a single composite canvas ourselves
+       (drawing tiles + vector overlay + markers), then replace the map
+       container's content with that canvas for the html2canvas capture.
+       This guarantees the map AND polygons render correctly in the screenshot. */
     var mapReadyPromise=Promise.resolve();
+    var mapSnapshotState=null;  /* {mapContainer, savedChildren, snapshotCanvas, snapshotWrapper} */
     if(panelId==='alertMap'&&typeof alertMapInstance!=='undefined'&&alertMapInstance){
       mapReadyPromise=new Promise(function(resolve){
         if(!alertMapInstance._loaded){resolve();return}
-        /* invalidateSize triggers a re-layout. Listen for the next 'load'
-           event (fires after tiles finish repositioning). Also set a 1.5s
-           timeout as a fallback in case 'load' never fires (e.g. all tiles
-           already cached). */
+        /* Invalidate size so tiles settle at the new panel width, then wait
+           for the 'load' event (fires when tiles finish repositioning) plus
+           a buffer. Then take the snapshot. */
         var done=false;
-        function finish(){if(!done){done=true;setTimeout(resolve,500)}}
+        function finish(){
+          if(done)return;
+          done=true;
+          setTimeout(function(){
+            try{
+              var mapContainer=alertMapInstance.getContainer();
+              /* Snapshot the map onto a composite canvas */
+              var snap=snapshotLeafletMap(alertMapInstance);
+              if(snap){
+                /* Replace the map container's children with the snapshot
+                   canvas. We hide the original Leaflet panes (don't remove
+                   them - Leaflet would break) by wrapping: insert the
+                   snapshot canvas as the only visible child, hide all
+                   Leaflet panes via display:none. */
+                var leafletPanes=mapContainer.querySelectorAll('.leaflet-pane, .leaflet-control-container');
+                var savedDisplays=[];
+                leafletPanes.forEach(function(p){savedDisplays.push(p.style.display);p.style.display='none'});
+                /* Insert snapshot canvas as a direct child of the map container */
+                var wrapper=document.createElement('div');
+                wrapper.className='map-snapshot-wrapper';
+                wrapper.style.cssText='position:absolute;inset:0;z-index:1';
+                wrapper.appendChild(snap);
+                mapContainer.appendChild(wrapper);
+                mapSnapshotState={
+                  mapContainer:mapContainer,
+                  panes:leafletPanes,
+                  savedDisplays:savedDisplays,
+                  wrapper:wrapper
+                };
+              }
+            }catch(e){console.error('Map snapshot setup failed:',e)}
+            resolve();
+          },500);
+        }
         alertMapInstance.once('load',finish);
         alertMapInstance.invalidateSize();
         setTimeout(finish,1500);  /* fallback */
@@ -2490,6 +2612,13 @@ function screenshotPanel(panelId,btn){
       width:shotWidth,
       height:panel.scrollHeight
     }).then(function(canvas){
+      /* Restore map snapshot: remove the wrapper canvas and un-hide the
+         original Leaflet panes so the live map works again. */
+      if(mapSnapshotState){
+        if(mapSnapshotState.wrapper.parentNode)mapSnapshotState.wrapper.parentNode.removeChild(mapSnapshotState.wrapper);
+        mapSnapshotState.panes.forEach(function(p,i){p.style.display=mapSnapshotState.savedDisplays[i]||''});
+        mapSnapshotState=null;
+      }
       /* Restore iframes */
       iframeData.forEach(function(d){if(d.placeholder.parentNode)d.parent.replaceChild(d.iframe,d.placeholder)});
       /* Restore original image srcs */
@@ -2511,6 +2640,12 @@ function screenshotPanel(panelId,btn){
       showScreenshotPreview(dataUrl,title,panelId);
     }).catch(function(err){
       console.error('Screenshot error:',err);
+      /* Restore map snapshot on error too */
+      if(mapSnapshotState){
+        if(mapSnapshotState.wrapper.parentNode)mapSnapshotState.wrapper.parentNode.removeChild(mapSnapshotState.wrapper);
+        mapSnapshotState.panes.forEach(function(p,i){p.style.display=mapSnapshotState.savedDisplays[i]||''});
+        mapSnapshotState=null;
+      }
       /* Restore iframes */
       iframeData.forEach(function(d){if(d.placeholder.parentNode)d.parent.replaceChild(d.iframe,d.placeholder)});
       /* Restore original image srcs */
