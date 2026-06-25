@@ -5412,6 +5412,28 @@ var WWAS_FILTERS={
   statement:{label:'Statements',on:true,tag:'tag-md',color:'#a855f6'},
   outlook:{label:'Outlooks',on:true,tag:'tag-brf',color:'#c084fc'}
 };
+/* Tri-County filter: when ON, only show alerts whose text mentions at
+   least one Tri-County keyword (county names + key cities + I-94).
+   Matches case-insensitively against event, areaDesc, headline, and
+   description. I-94 has many textual variants (I-94, I94, I 94, Interstate
+   94) so we normalize the text first. */
+var WWAS_TRICOUNTY_FILTER={on:false,label:'Tri-County',color:'#38bdf8'};
+var WWAS_TRICOUNTY_KEYWORDS=['allegan','kalamazoo','van buren','south haven','holland'];
+/* I-94 variants are matched via a regex because the text can be
+   "I-94", "I94", "I 94", or "Interstate 94". */
+var WWAS_I94_REGEX=/i[\s\-]?94|interstate\s+94/i;
+function wwasMatchesTriCounty(alert){
+  if(!alert||!alert.properties)return false;
+  var p=alert.properties;
+  var text=[p.event,p.areaDesc,p.headline,p.description].filter(Boolean).join('\n');
+  if(!text)return false;
+  var lower=text.toLowerCase();
+  for(var i=0;i<WWAS_TRICOUNTY_KEYWORDS.length;i++){
+    if(lower.indexOf(WWAS_TRICOUNTY_KEYWORDS[i])>=0)return true;
+  }
+  if(WWAS_I94_REGEX.test(text))return true;
+  return false;
+}
 var wwasCache=null;
 var wwasCacheTime=0;
 var wwasPrevIds={};  /* Track alert IDs from previous fetch to detect new alerts */
@@ -5443,6 +5465,13 @@ function buildWwasFilters(){
       '<input type="checkbox" '+(f.on?'checked':'')+' onchange="WWAS_FILTERS[\''+key+'\'].on=this.checked;this.parentElement.classList.toggle(\'on\',this.checked);renderWwasContent()">'+
       '<span style="color:'+(f.on?f.color:'var(--t3)')+'">'+f.label+'</span></label>';
   });
+  /* Tri-County filter chip (separate from category filters). When ON,
+     only alerts mentioning Allegan, Kalamazoo, Van Buren, South Haven,
+     Holland, or I-94 are shown. */
+  var tcf=WWAS_TRICOUNTY_FILTER;
+  html+='<label class="wwas-filter-chip '+(tcf.on?'on':'')+'" style="border-left:3px solid '+tcf.color+'">'+
+    '<input type="checkbox" '+(tcf.on?'checked':'')+' onchange="WWAS_TRICOUNTY_FILTER.on=this.checked;this.parentElement.classList.toggle(\'on\',this.checked);renderWwasContent()">'+
+    '<span style="color:'+(tcf.on?tcf.color:'var(--t3)')+'"><i class="fas fa-location-dot" style="margin-right:3px"></i>'+tcf.label+'</span></label>';
   c.innerHTML=html;
 }
 
@@ -5465,12 +5494,16 @@ async function fWWASummary(){
     }
     var data=JSON.parse(txt);
     var features=data.features||[];
-    /* Sort by severity: warnings first, then watches, advisories, statements, outlooks */
-    var catOrder={warning:0,watch:1,advisory:2,statement:3,outlook:4};
+    /* Sort by issue date, newest first. Uses sent (NWS issuance timestamp)
+       falling back to effective/onset. This ensures the most recent alerts
+       appear at the top of the list. Alerts with no date sort to the end. */
     features.sort(function(a,b){
-      var ca=wwasCategory(a.properties.event);
-      var cb=wwasCategory(b.properties.event);
-      return (catOrder[ca]||9)-(catOrder[cb]||9);
+      var da=a.properties.sent||a.properties.effective||a.properties.onset||'';
+      var db=b.properties.sent||b.properties.effective||b.properties.onset||'';
+      if(!da&&!db)return 0;
+      if(!da)return 1;
+      if(!db)return -1;
+      return new Date(db).getTime()-new Date(da).getTime();
     });
     wwasCache=features;
     wwasCacheTime=now;
@@ -5843,6 +5876,9 @@ function renderWwasContent(){
     var cat=wwasCategory(event);
     var f=WWAS_FILTERS[cat];
     if(!f||!f.on)return;
+    /* Tri-County filter: if ON, skip alerts that don't mention at least
+       one Tri-County keyword (counties, key cities, or I-94). */
+    if(WWAS_TRICOUNTY_FILTER.on&&!wwasMatchesTriCounty(alert))return;
     count++;
     var tagInfo=wwasTagInfo(cat);
     /* Format expiration time */
@@ -5874,12 +5910,11 @@ function renderWwasContent(){
       '<div class="wwas-item-head">'+
         '<span class="wwas-item-tag '+tagInfo.tag+'" style="background:'+(cat==='warning'?'var(--dng-g)':cat==='watch'?'var(--wrn-g)':cat==='advisory'?'var(--suc-g)':'var(--acc-g)')+';color:'+tagInfo.color+'">'+cat.toUpperCase()+'</span>'+
         '<span class="wwas-item-event">'+event+'</span>'+
-        '<span class="wwas-item-meta">'+(expires?'Expires: '+expires:'')+'</span>'+
+        '<span class="wwas-item-meta">'+(issued?'Issued '+issued:'')+(issued&&expires?' | ':'')+(expires?'Expires '+expires:'')+'</span>'+
       '</div>'+
       '<div class="wwas-item-areas"><strong>Areas:</strong> '+(p.areaDesc||'N/A')+'</div>'+
       (p.headline?'<div class="wwas-item-areas" style="margin-bottom:6px">'+p.headline+'</div>':'')+
       (desc?'<div class="wwas-item-desc">'+desc.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>':'')+
-      (issued?'<div style="font-size:8px;color:var(--t3);margin-top:4px">Issued: '+issued+'</div>':'')+
       '<div class="wwas-item-actions">'+
         '<button class="wwas-item-btn wwas-item-copy" onclick="copyWWasItem(\''+textId+'\')"><i class="fas fa-copy"></i> Copy Text</button>'+
         '<button class="wwas-item-btn wwas-item-shot" onclick="screenshotWWasItem('+idx+')"><i class="fas fa-camera"></i> Export Image</button>'+
