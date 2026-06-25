@@ -1375,12 +1375,58 @@ function emp(el,txt){var e=document.getElementById(el);if(e)e.innerHTML='<div cl
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function findLoc(key){return LOCATIONS.find(function(l){return l.key===key})}
 
+/* ── Logo data URL cache ────────────────────────────────────────────────────
+   profile_picture.png is fetched ONCE at startup, converted to a data URL,
+   and cached in LOGO_DATA_URL. The screenshot brand footers then use this
+   cached data URL directly instead of a relative URL. This prevents the
+   "broken logo" bug on screenshots where html2canvas would run before a
+   freshly-created <img src="./profile_picture.png"> had time to load (or
+   where the onerror fallback fired during the async data-URL conversion). */
+var LOGO_DATA_URL=null;
+function preloadLogoDataUrl(){
+  try{
+    fetch(CONFIG.logoUrl,{mode:'cors'}).then(function(r){return r.blob()}).then(function(blob){
+      var reader=new FileReader();
+      reader.onloadend=function(){
+        if(typeof reader.result==='string'&&reader.result.startsWith('data:')){
+          LOGO_DATA_URL=reader.result;
+          /* Also patch the header logo src so it matches (helps with future
+             screenshots that may capture the header). */
+          var hl=document.getElementById('logoImg');
+          if(hl)hl.src=LOGO_DATA_URL;
+        }
+      };
+      reader.readAsDataURL(blob);
+    }).catch(function(e){console.warn('Logo preload failed, screenshots will use fallback:',e)});
+  }catch(e){console.warn('Logo preload error:',e)}
+}
+
+/* Wait for an <img> element to finish loading its current src. Resolves
+   on either 'load' or 'error' so a broken image doesn't hang the capture
+   forever. Times out after 3s as a safety net. */
+function waitForImgLoad(img){
+  return new Promise(function(resolve){
+    if(!img){resolve();return}
+    /* Already loaded (complete) and has a src? Resolve immediately. */
+    if(img.complete&&img.naturalWidth>0){resolve();return}
+    if(!img.src){resolve();return}
+    var done=false;
+    function finish(){if(!done){done=true;img.removeEventListener('load',finish);img.removeEventListener('error',finish);resolve()}}
+    img.addEventListener('load',finish);
+    img.addEventListener('error',finish);
+    setTimeout(finish,3000);
+  });
+}
+
 /* ── Build header from CONFIG ──────────────────────────────────────────────── */
 function applyConfigToHeader(){
   document.getElementById('logoImg').src=CONFIG.logoUrl;
   document.getElementById('siteTitle').textContent=CONFIG.siteName;
   document.getElementById('siteSubtitle').innerHTML=CONFIG.siteSubtitle;
   document.getElementById('nwrFq').textContent=getActiveNwrStation().key+' '+getActiveNwrStation().freq;
+  /* Kick off the async logo data-URL preload. The cache is consumed by the
+     screenshot brand footers whenever a screenshot is taken. */
+  preloadLogoDataUrl();
   /* Wire up station switching - click the frequency label to cycle to the next station */
   var fqEl=document.getElementById('nwrFq');
   if(fqEl&&!fqEl.dataset.bound){
@@ -2249,7 +2295,8 @@ function screenshotPanel(panelId,btn){
       weekday:'short',year:'numeric',month:'short',day:'numeric',
       hour:'2-digit',minute:'2-digit',hour12:true
     });
-    var logoInner='<img src="'+CONFIG.logoUrl+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
+    var logoSrc=LOGO_DATA_URL||CONFIG.logoUrl;
+    var logoInner='<img src="'+logoSrc+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
     brandEl=document.createElement('div');
     brandEl.className='shot-brand-footer';
     brandEl.style.cssText='display:flex;align-items:center;gap:6px;justify-content:center;padding:8px 12px;margin-top:8px;border-top:1px solid var(--bdr);font-size:8px;color:var(--t3)';
@@ -2311,10 +2358,29 @@ function screenshotPanel(panelId,btn){
       var resolved=false;
       var timer=setTimeout(function(){if(!resolved){resolved=true;resolve()}},5000);
       function done(){if(!resolved){resolved=true;clearTimeout(timer);resolve()}}
+      /* After we set img.src to a data URL, we still need to wait for the
+         img's 'load' event to fire before declaring victory - otherwise
+         html2canvas may run before the new src has decoded. */
+      function setSrcAndAwait(dataUrl){
+        img.setAttribute('data-original-src',img.src);
+        /* Attach load/error listeners BEFORE setting src so we catch the
+           event reliably. */
+        var loaded=false;
+        function onDone(){if(loaded)return;loaded=true;img.removeEventListener('load',onDone);img.removeEventListener('error',onDone);done()}
+        img.addEventListener('load',onDone);
+        img.addEventListener('error',onDone);
+        img.src=dataUrl;
+        /* If the data URL was already cached/synchronous, complete may be
+           true already - handle that case. */
+        if(img.complete&&img.naturalWidth>0)onDone();
+        /* Safety timeout in case neither load nor error fires (the outer
+           5s timer also covers this). */
+        setTimeout(onDone,1500);
+      }
       /* First try: direct fetch (works if the server sends CORS headers) */
       fetch(img.src,{mode:'cors'}).then(function(r){return r.blob()}).then(function(blob){
         var reader=new FileReader();
-        reader.onloadend=function(){img.setAttribute('data-original-src',img.src);img.src=reader.result;done()};
+        reader.onloadend=function(){if(typeof reader.result==='string'&&reader.result.startsWith('data:')){setSrcAndAwait(reader.result)}else{done()}};
         reader.onerror=function(){done()};
         reader.readAsDataURL(blob);
       }).catch(function(){
@@ -2322,7 +2388,7 @@ function screenshotPanel(panelId,btn){
         var proxyUrl=CONFIG.corsProxy+encodeURIComponent(img.src);
         fetch(proxyUrl).then(function(r){return r.blob()}).then(function(blob){
           var reader=new FileReader();
-          reader.onloadend=function(){img.setAttribute('data-original-src',img.src);img.src=reader.result;done()};
+          reader.onloadend=function(){if(typeof reader.result==='string'&&reader.result.startsWith('data:')){setSrcAndAwait(reader.result)}else{done()}};
           reader.onerror=function(){done()};
           reader.readAsDataURL(blob);
         }).catch(function(){
@@ -2331,17 +2397,28 @@ function screenshotPanel(panelId,btn){
             if(data&&data.contents){
               try{
                 var dataUrl='data:image/png;base64,'+btoa(data.contents);
-                img.setAttribute('data-original-src',img.src);img.src=dataUrl;
-              }catch(e){/* btoa fails on non-binary content - skip */}
-            }
-            done();
+                setSrcAndAwait(dataUrl);
+              }catch(e){/* btoa fails on non-binary content - skip */done()}
+            }else{done()}
           }).catch(function(){done()});
         });
       });
     });
   }
 
-  Promise.all(crossOriginImgs.map(convertImageToDataUrl)).then(function(){
+  /* Build a promise that resolves when the brand footer logo img (if any)
+     has finished loading its src. The brand footer was just created via
+     innerHTML above, so its <img> is still decoding. Without this wait,
+     html2canvas can run before the logo paints, producing a blank circle
+     in the screenshot. We collect this promise separately so it runs in
+     parallel with the cross-origin image conversions. */
+  var brandLogoLoadPromise=Promise.resolve();
+  if(brandEl){
+    var brandImg=brandEl.querySelector('img');
+    if(brandImg)brandLogoLoadPromise=waitForImgLoad(brandImg);
+  }
+
+  Promise.all([brandLogoLoadPromise].concat(crossOriginImgs.map(convertImageToDataUrl))).then(function(){
     /* Special handling for the Alert Polygon Map panel: Leaflet uses
        transform: translate3d() on tile images and the map container, and
        html2canvas doesn't always sync those transforms correctly - the base
@@ -5854,7 +5931,8 @@ function screenshotWWasItem(idx){
   var tzShort='EDT';
   try{var tzFmt=new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,timeZoneName:'short'});var tzPart=tzFmt.formatToParts(stampDate).find(function(p){return p.type==='timeZoneName'});if(tzPart&&tzPart.value)tzShort=tzPart.value}catch(e){}
   var stampStr=stampDate.toLocaleString('en-US',{timeZone:CONFIG.tz,weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
-  var logoInner='<img src="'+CONFIG.logoUrl+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
+  var logoSrc=LOGO_DATA_URL||CONFIG.logoUrl;
+  var logoInner='<img src="'+logoSrc+'" alt="KN" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span class="shot-brand-logo-fb" style="display:none">KN</span>';
   var brandEl=document.createElement('div');
   brandEl.className='shot-brand';
   brandEl.style.cssText='display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;background:rgba(168,85,246,.06);border-radius:6px;border:1px solid rgba(168,85,246,.12)';
@@ -5868,6 +5946,13 @@ function screenshotWWasItem(idx){
   var ts=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
   var filename='KN_WWA_'+safeTitle+'_'+ts+'.png';
 
+  /* Wait for the brand footer logo img to finish loading before capturing.
+     Without this, html2canvas runs before the freshly-created <img> has
+     decoded its src, producing a blank circle in the screenshot. */
+  var brandImg=brandEl.querySelector('img');
+  var logoReady=brandImg?waitForImgLoad(brandImg):Promise.resolve();
+
+  logoReady.then(function(){
   html2canvas(item,{
     backgroundColor:'#0e0e15',
     scale:2,
@@ -5888,6 +5973,7 @@ function screenshotWWasItem(idx){
     if(brandEl.parentNode)brandEl.parentNode.removeChild(brandEl);
     showToast('Screenshot failed: '+(err.message||err),true);
   });
+  });  /* close logoReady.then() */
 }
 
 /* ── Local Storm Reports (LSR) ───────────────────────────────────────────────
