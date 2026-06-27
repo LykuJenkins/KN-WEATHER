@@ -12,8 +12,12 @@
 <meta name="apple-mobile-web-app-title" content="KN Weather">
 <meta name="application-name" content="KN Weather">
 <meta name="description" content="KN Weather Center - Storm Operations For Allegan, Kalamazoo, &amp; Van Buren Counties">
-<!-- Inline SVG favicon (purple circle with KN) as a data URI -->
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23a855f6'/%3E%3Ctext x='50' y='68' font-family='Arial,sans-serif' font-size='44' font-weight='bold' fill='white' text-anchor='middle'%3EKN%3C/text%3E%3C/svg%3E">
+<!-- Favicon: use profile_picture.png so the browser tab icon matches the
+     site logo. Multiple sizes are declared so browsers can pick the best
+     fit for their UI (tab, bookmark, shortcut). -->
+<link rel="icon" type="image/png" sizes="32x32" href="./profile_picture.png">
+<link rel="icon" type="image/png" sizes="16x16" href="./profile_picture.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./profile_picture.png">
 <link rel="apple-touch-icon" href="./profile_picture.png">
 <!-- Web app manifest - generated at runtime by the PWA init script below -->
 <link rel="manifest" id="manifestLink">
@@ -78,6 +82,11 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .rbtn{width:34px;height:34px;border-radius:50%;background:var(--acc-g);border:1px solid var(--bdr);color:var(--acc);font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.25s;flex-shrink:0}
 .rbtn:hover{background:var(--acc);color:#fff;box-shadow:0 0 14px var(--acc-g)}
 .rbtn.spin i{animation:sp .8s linear infinite}
+/* Install app button - highlighted green to draw attention when the
+   install prompt is available. Pulses for 8 seconds after first appearing. */
+#installBtn{background:rgba(52,211,153,.15);border-color:#34d399;color:#34d399}
+#installBtn:hover{background:#34d399;color:#fff;box-shadow:0 0 14px rgba(52,211,153,.4)}
+#installBtn.pulse{animation:pulse 1.5s ease-in-out infinite}
 /* Notification bell button - shows permission state via color
    Default: purple (not yet asked)
    .granted: green (notifications enabled)
@@ -716,6 +725,7 @@ body.capturing .wwas-item-actions{display:none!important}
   <div class="hdr-c">
     <button class="rbtn" id="rBtn" onclick="refreshAll()" title="Refresh all data"><i class="fas fa-arrows-rotate"></i></button>
     <button class="rbtn" id="notifBtn" onclick="toggleNotificationPermission()" title="Enable alert notifications"><i class="fas fa-bell"></i></button>
+    <button class="rbtn" id="installBtn" onclick="triggerInstall()" title="Install KN Weather Center as an app" style="display:none"><i class="fas fa-download"></i></button>
     <div class="settings-wrap">
       <button class="rbtn" id="settingsBtn" onclick="toggleSettings()" title="Settings"><i class="fas fa-gear"></i></button>
       <div class="settings-menu" id="settingsMenu">
@@ -7609,6 +7619,76 @@ if(document.readyState==='loading'){
 }else{
   initPWA();
 }
+
+/* ── PWA Install Prompt ─────────────────────────────────────────────────────
+   Chrome fires a 'beforeinstallprompt' event when the site meets PWA
+   installability criteria (HTTPS, manifest, service worker). We capture
+   that event and show an "Install App" button (#installBtn) in the header
+   next to the notification bell. When the user clicks it, we call
+   prompt() on the saved event to show the native install dialog.
+   The button is hidden until the event fires (so it never shows in
+   browsers that don't support PWA install, like iOS Safari - which uses
+   the Share → Add to Home Screen flow instead). */
+var deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',function(e){
+  /* Prevent Chrome 67+ from showing the mini-infobar automatically */
+  e.preventDefault();
+  /* Stash the event so it can be triggered later by the button click */
+  deferredInstallPrompt=e;
+  /* Show the install button */
+  var btn=document.getElementById('installBtn');
+  if(btn){
+    btn.style.display='';
+    /* Pulse the button a few times to draw the user's attention */
+    btn.classList.add('pulse');
+    setTimeout(function(){btn.classList.remove('pulse')},8000);
+  }
+  console.log('PWA: Install prompt ready - showing install button');
+});
+
+/* Called when the user clicks the install button. Shows the native
+   install dialog. After the prompt is consumed (or dismissed), the
+   button is hidden and the event is cleared. */
+function triggerInstall(){
+  if(!deferredInstallPrompt){
+    /* No saved prompt - this happens if the browser doesn't support PWA
+       install (e.g. iOS Safari) or the app is already installed. Show
+       a toast with platform-specific instructions. */
+    var isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+    if(isIOS){
+      showToast('To install: tap the Share button, then "Add to Home Screen"',true);
+    }else{
+      showToast('Install option not available - use your browser menu "Install app..." option',true);
+    }
+    return;
+  }
+  /* Show the install prompt */
+  deferredInstallPrompt.prompt();
+  /* Wait for the user's response to the prompt */
+  deferredInstallPrompt.userChoice.then(function(choice){
+    if(choice.outcome==='accepted'){
+      console.log('PWA: User accepted the install prompt');
+      showToast('Installing KN Weather Center...');
+    }else{
+      console.log('PWA: User dismissed the install prompt');
+    }
+    /* The prompt can only be used once. Clear it and hide the button. */
+    deferredInstallPrompt=null;
+    var btn=document.getElementById('installBtn');
+    if(btn)btn.style.display='none';
+  });
+}
+
+/* If the app is already installed (running in standalone mode), hide
+   the install button permanently. The 'appinstalled' event fires once
+   when the user installs the app. */
+window.addEventListener('appinstalled',function(){
+  console.log('PWA: App installed successfully');
+  var btn=document.getElementById('installBtn');
+  if(btn)btn.style.display='none';
+  deferredInstallPrompt=null;
+  showToast('KN Weather Center installed!');
+});
 </script>
 <!-- Facebook SDK - loads asynchronously. fbAsyncInit (defined above) fires when ready. -->
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js" nonce="knwx"></script>
