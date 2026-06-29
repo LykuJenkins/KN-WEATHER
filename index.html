@@ -651,6 +651,9 @@ body.capturing .wwas-item-actions{display:none!important}
 .alert-map-legend.collapsed .alert-map-legend-toggle i{transform:rotate(-90deg)}
 .alert-map-legend-body{padding:0 10px 8px 10px;display:block}
 .alert-map-legend.collapsed .alert-map-legend-body{display:none}
+.alert-map-legend.collapsed .alert-map-legend-reset{display:none!important}
+.alert-map-legend-reset{display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 10px;margin:0;border-bottom:1px solid var(--bdr);background:rgba(168,85,246,.08);cursor:pointer;font-size:9px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.04em;user-select:none;transition:background .15s}
+.alert-map-legend-reset:hover{background:rgba(168,85,246,.18)}
 .alert-map-legend-title{font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
 .alert-map-legend-item{display:flex;align-items:center;gap:6px;margin:2px 0;padding:1px 2px;border-radius:3px;transition:background .15s}
 .alert-map-legend-item:hover{background:rgba(255,255,255,.04)}
@@ -5230,10 +5233,13 @@ function initAlertMap(){
 
   /* Build the legend container - the body is populated dynamically by
      fAlertMap() each time alerts are refreshed, so it only shows alert
-     types that are actually present on the map. See buildAlertLegend(). */
+     types that are actually present on the map. See buildAlertLegend().
+     The header also includes a "Show All" reset button that clears all
+     hidden alert types so every active alert is visible again. */
   var legend=document.getElementById('alertMapLegend');
   if(legend&&!legend.dataset.built){
     legend.innerHTML='<div class="alert-map-legend-toggle" onclick="var l=document.getElementById(\'alertMapLegend\');l.classList.toggle(\'collapsed\')"><span><i class="fas fa-palette"></i> Alert Colors</span><i class="fas fa-chevron-down"></i></div>'+
+      '<div class="alert-map-legend-reset" id="alertMapLegendReset" style="display:none" onclick="resetAlertTypeHidden()"><i class="fas fa-eye"></i> Show All Alerts</div>'+
       '<div class="alert-map-legend-body" id="alertMapLegendBody">'+
       '<div style="font-size:9px;color:var(--t3);padding:4px 0">Loading alerts...</div>'+
       '</div>';
@@ -5254,6 +5260,13 @@ try{
 function saveAlertTypeHidden(){
   try{localStorage.setItem(ALERT_TYPE_HIDDEN_KEY,JSON.stringify(ALERT_TYPE_HIDDEN))}catch(e){}
 }
+/* Reset all hidden alert types - re-shows every active alert on the map.
+   Called by the "Show All Alerts" button in the legend header. */
+function resetAlertTypeHidden(){
+  ALERT_TYPE_HIDDEN={};
+  saveAlertTypeHidden();
+  fAlertMap();
+}
 /* Toggle a single alert type's visibility and re-render the map */
 function toggleAlertType(eventName){
   if(!eventName)return;
@@ -5273,6 +5286,11 @@ function toggleAlertType(eventName){
 function buildAlertLegend(presentTypes){
   var body=document.getElementById('alertMapLegendBody');
   if(!body)return;
+  /* Show the "Show All Alerts" reset button only if at least one alert
+     type is currently hidden. Otherwise hide it to save space. */
+  var resetBtn=document.getElementById('alertMapLegendReset');
+  var hasHidden=presentTypes&&presentTypes.some(function(t){return !!ALERT_TYPE_HIDDEN[t.event]});
+  if(resetBtn)resetBtn.style.display=hasHidden?'flex':'none';
   if(!presentTypes||presentTypes.length===0){
     body.innerHTML='<div style="font-size:9px;color:var(--t3);padding:4px 0">No active alerts</div>';
     return;
@@ -5712,15 +5730,13 @@ async function fAlertMap(){
       var color=getAlertColor(event);
       var p=alert.properties;
 
-      /* Skip this alert if the user has unchecked it in the legend.
-         The alert is still counted in presentTypes (so the legend
-         checkbox remains visible for re-toggling) but not drawn. */
-      if(!ALERT_TYPE_HIDDEN[event]){
-        /* Track present alert types for the legend (count + category) */
-        var existing=presentTypes.find(function(pt){return pt.event===event});
-        if(existing){existing.count++}else{
-          presentTypes.push({event:event,color:color,cat:cat,count:1});
-        }
+      /* Track present alert types for the legend (count + category).
+         This is ALWAYS tracked regardless of hidden state, so the legend
+         checkbox stays visible (just unchecked/dimmed) when the user
+         hides an alert type - letting them re-check it to bring it back. */
+      var existing=presentTypes.find(function(pt){return pt.event===event});
+      if(existing){existing.count++}else{
+        presentTypes.push({event:event,color:color,cat:cat,count:1});
       }
 
       /* Resolve geometry (always needed - even hidden alerts so we can
