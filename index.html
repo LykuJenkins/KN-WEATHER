@@ -645,14 +645,16 @@ body.capturing .wwas-item-actions{display:none!important}
 /* Alert Polygon Map panel (Leaflet) */
 .alert-map-wrap{position:relative;border:1px solid var(--bdr);border-radius:var(--rs);overflow:hidden}
 #alertMap{height:700px;width:100%;background:#0a0a12;z-index:1}
-.alert-map-legend{position:absolute;bottom:10px;left:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;font-size:9px;color:var(--t2);backdrop-filter:blur(12px);max-height:300px;overflow-y:auto;max-width:200px}
+.alert-map-legend{position:absolute;bottom:10px;left:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;font-size:9px;color:var(--t2);backdrop-filter:blur(12px);max-height:400px;overflow-y:auto;max-width:220px}
 .alert-map-legend-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;cursor:pointer;font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;user-select:none}
 .alert-map-legend-toggle i{transition:transform .2s}
 .alert-map-legend.collapsed .alert-map-legend-toggle i{transform:rotate(-90deg)}
 .alert-map-legend-body{padding:0 10px 8px 10px;display:block}
 .alert-map-legend.collapsed .alert-map-legend-body{display:none}
 .alert-map-legend-title{font-size:9px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
-.alert-map-legend-item{display:flex;align-items:center;gap:6px;margin:2px 0}
+.alert-map-legend-item{display:flex;align-items:center;gap:6px;margin:2px 0;padding:1px 2px;border-radius:3px;transition:background .15s}
+.alert-map-legend-item:hover{background:rgba(255,255,255,.04)}
+.alert-map-legend-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .alert-map-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
 .alert-map-controls{position:absolute;top:10px;right:10px;z-index:1000;background:rgba(14,14,21,.92);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;backdrop-filter:blur(12px);max-width:200px}
 .alert-map-controls label{display:flex;align-items:center;gap:5px;cursor:pointer;margin:2px 0;font-size:9px}
@@ -5050,6 +5052,14 @@ function senvCard(label,val,unit,badge){
    Auto-refreshes every 5 minutes. */
 var alertMapInstance=null;
 var alertMapLayers={warnings:[],watches:[],advisories:[],counties:null,countyLabels:[],radarRefl:null,radarVel:null};
+/* drawnAlerts: list of all alerts currently drawn on the map (or hidden
+   via the legend checkboxes). Each entry has {event,color,cat,areaDesc,
+   ends,headline,description,geoms}. Used by buildAlertPopup() to find
+   all alerts overlapping a clicked point so the user can cycle through
+   them with prev/next arrows. */
+var drawnAlerts=[];
+/* Current popup cycling state: {latlng, overlappingAlerts, currentIndex} */
+var alertPopupState=null;
 var COUNTY_GEOJSON=null;
 
 /* NWS alert color logic - matches the official NWS Hazards Map color codes.
@@ -5194,6 +5204,13 @@ function initAlertMap(){
      With Canvas rendering, overlays are drawn as pixels on a <canvas> element
      which html2canvas captures perfectly. */
   alertMapInstance=L.map('alertMap',{scrollWheelZoom:false,preferCanvas:true}).setView([42.15,-86.15],8);
+  /* Capture the last click position so bindPopup() functions can know
+     where the user tapped. Leaflet's bindPopup(function) doesn't pass
+     the click latlng reliably across versions, so we stash it here on
+     every 'click' event. */
+  alertMapInstance.on('click',function(e){
+    alertMapInstance._lastClickLatLng=e.latlng;
+  });
   /* Use CARTO dark tiles instead of OpenStreetMap tiles.
      This is critical for screenshot exports: CARTO's tile server sends
      Access-Control-Allow-Origin: * headers, so html2canvas can capture
@@ -5211,33 +5228,199 @@ function initAlertMap(){
     subdomains:'abcd'
   }).addTo(alertMapInstance);
 
-  /* Build the legend */
+  /* Build the legend container - the body is populated dynamically by
+     fAlertMap() each time alerts are refreshed, so it only shows alert
+     types that are actually present on the map. See buildAlertLegend(). */
   var legend=document.getElementById('alertMapLegend');
-  if(legend){
-    var items=[
-      {c:'#FF0000',l:'Tornado Warning'},
-      {c:'#FFA500',l:'Severe Tstm Warning'},
-      {c:'#8B0000',l:'Flash Flood Warning'},
-      {c:'#00FF00',l:'Flood Warning'},
-      {c:'#FF69B4',l:'Winter Storm Warning'},
-      {c:'#FF4500',l:'Blizzard Warning'},
-      {c:'#DAA520',l:'High Wind Warning'},
-      {c:'#FFFF00',l:'Tornado Watch'},
-      {c:'#DB7093',l:'Severe Tstm Watch'},
-      {c:'#2E8B57',l:'Flood Watch'},
-      {c:'#7B68EE',l:'Winter Wx Advisory'},
-      {c:'#D8BFD8',l:'Small Craft Advisory'},
-      {c:'#40E0D0',l:'Beach Hazards Statement'},
-      {c:'#FFE4B5',l:'Special Wx Statement'},
-      {c:'#EEE8AA',l:'Hazardous Wx Outlook'},
-      {c:'#D2B48C',l:'Wind Advisory'},
-      {c:'#708090',l:'Dense Fog Advisory'},
-      {c:'#FF7F50',l:'Heat Advisory'}
-    ];
+  if(legend&&!legend.dataset.built){
     legend.innerHTML='<div class="alert-map-legend-toggle" onclick="var l=document.getElementById(\'alertMapLegend\');l.classList.toggle(\'collapsed\')"><span><i class="fas fa-palette"></i> Alert Colors</span><i class="fas fa-chevron-down"></i></div>'+
-      '<div class="alert-map-legend-body">'+
-      items.map(function(i){return '<div class="alert-map-legend-item"><div class="alert-map-legend-dot" style="background:'+i.c+'"></div>'+i.l+'</div>'}).join('')+
+      '<div class="alert-map-legend-body" id="alertMapLegendBody">'+
+      '<div style="font-size:9px;color:var(--t3);padding:4px 0">Loading alerts...</div>'+
       '</div>';
+    legend.dataset.built='1';
+  }
+}
+
+/* Alert type visibility state - stores event names the user has unchecked
+   in the legend. Persisted in localStorage so the user's choices survive
+   page reloads. Keys are the exact event names from NWS (e.g.
+   "Severe Thunderstorm Warning", "Tornado Watch"). */
+var ALERT_TYPE_HIDDEN_KEY='kn_weather_alert_hidden_types';
+var ALERT_TYPE_HIDDEN={};
+try{
+  var savedHidden=localStorage.getItem(ALERT_TYPE_HIDDEN_KEY);
+  if(savedHidden)ALERT_TYPE_HIDDEN=JSON.parse(savedHidden)||{};
+}catch(e){}
+function saveAlertTypeHidden(){
+  try{localStorage.setItem(ALERT_TYPE_HIDDEN_KEY,JSON.stringify(ALERT_TYPE_HIDDEN))}catch(e){}
+}
+/* Toggle a single alert type's visibility and re-render the map */
+function toggleAlertType(eventName){
+  if(!eventName)return;
+  if(ALERT_TYPE_HIDDEN[eventName]){
+    delete ALERT_TYPE_HIDDEN[eventName];
+  }else{
+    ALERT_TYPE_HIDDEN[eventName]=true;
+  }
+  saveAlertTypeHidden();
+  fAlertMap();
+}
+
+/* Build the legend body with checkboxes for each alert type currently
+   present on the map. Each item shows the color dot + event name +
+   count, and a checkbox that toggles visibility. Items are sorted by
+   severity (warnings, watches, advisories, statements, outlooks). */
+function buildAlertLegend(presentTypes){
+  var body=document.getElementById('alertMapLegendBody');
+  if(!body)return;
+  if(!presentTypes||presentTypes.length===0){
+    body.innerHTML='<div style="font-size:9px;color:var(--t3);padding:4px 0">No active alerts</div>';
+    return;
+  }
+  /* Sort by severity category, then alphabetically within each category */
+  var catOrder={warnings:0,watches:1,advisories:2,statements:3,outlooks:4};
+  presentTypes.sort(function(a,b){
+    var ca=catOrder[a.cat]||9;
+    var cb=catOrder[b.cat]||9;
+    if(ca!==cb)return ca-cb;
+    return a.event.localeCompare(b.event);
+  });
+  var html='';
+  presentTypes.forEach(function(t){
+    var isHidden=!!ALERT_TYPE_HIDDEN[t.event];
+    html+='<label class="alert-map-legend-item" style="opacity:'+(isHidden?'.4':'1')+';cursor:pointer">'+
+      '<input type="checkbox" '+(isHidden?'':'checked')+' onchange="toggleAlertType(\''+t.event.replace(/'/g,"\\'")+'\')" style="accent-color:'+t.color+';width:11px;height:11px;cursor:pointer;margin:0">'+
+      '<div class="alert-map-legend-dot" style="background:'+t.color+'"></div>'+
+      '<span>'+t.event+'</span>'+
+      (t.count>1?'<span style="margin-left:auto;font-size:8px;color:var(--t3);font-weight:700">'+t.count+'</span>':'')+
+      '</label>';
+  });
+  body.innerHTML=html;
+}
+
+/* Check if a latlng point is inside any of the given geometries.
+   Uses Leaflet's GeoJSON layer to do point-in-polygon detection. */
+function pointInGeometries(latlng,geoms){
+  if(!latlng||!geoms||geoms.length===0)return false;
+  try{
+    var pt=L.latLng(latlng.lat,latlng.lng);
+    for(var gi=0;gi<geoms.length;gi++){
+      var g=geoms[gi];
+      /* Create a temporary GeoJSON layer just for point-in-polygon test.
+         L.geoJSON's eachLayer + containsPoint is the most reliable way
+         to test polygon containment in Leaflet. */
+      var testLayer=L.geoJSON(g);
+      var hit=false;
+      testLayer.eachLayer(function(layer){
+        if(hit)return;
+        try{
+          if(layer.getBounds&&layer.getBounds().contains(pt)){
+            /* For polygon/multipolygon, use containsPoint on each sub-polygon */
+            if(layer.getLatLngs){
+              var rings=layer.getLatLngs();
+              /* Flatten multipolygon structure: [[ring1,ring2],[ring3]] */
+              var flatRings=[];
+              if(Array.isArray(rings[0])&&Array.isArray(rings[0][0])){
+                /* multipolygon: rings is array of arrays of arrays */
+                rings.forEach(function(poly){poly.forEach(function(ring){flatRings.push(ring)})});
+              }else{
+                /* polygon: rings is array of arrays */
+                rings.forEach(function(ring){flatRings.push(ring)});
+              }
+              for(var ri=0;ri<flatRings.length;ri++){
+                if(pointInRing(pt,flatRings[ri])){
+                  hit=true;return;
+                }
+              }
+            }
+          }
+        }catch(e){/* skip */}
+      });
+      /* Clean up the test layer */
+      testLayer.remove();
+      if(hit)return true;
+    }
+  }catch(e){console.warn('pointInGeometries error:',e)}
+  return false;
+}
+
+/* Ray-casting point-in-polygon test. ring is an array of L.latLng. */
+function pointInRing(pt,ring){
+  var x=pt.lng,y=pt.lat;
+  var inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=ring[i].lng,yi=ring[i].lat;
+    var xj=ring[j].lng,yj=ring[j].lat;
+    var intersect=((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi);
+    if(intersect)inside=!inside;
+  }
+  return inside;
+}
+
+/* Build the popup HTML for a clicked point. Finds all alerts whose
+   geometry contains the point, then shows the first one with prev/next
+   arrows if there are multiple. The arrows call cycleAlertPopup() to
+   update the popup content in place. */
+function buildAlertPopup(latlng){
+  if(!latlng)return '<div style="font-family:Inter,sans-serif;font-size:11px">No location</div>';
+  /* Find all alerts (visible OR hidden) that overlap this point */
+  var overlapping=drawnAlerts.filter(function(a){
+    return pointInGeometries(latlng,a.geoms);
+  });
+  if(overlapping.length===0){
+    return '<div style="font-family:Inter,sans-serif;font-size:11px;max-width:260px;padding:4px">'+
+      '<div style="color:var(--t3);font-size:10px"><i class="fas fa-check-circle" style="color:#34d399;margin-right:4px"></i>No active alerts at this location</div>'+
+      '</div>';
+  }
+  /* Save the cycling state */
+  alertPopupState={latlng:latlng,overlappingAlerts:overlapping,currentIndex:0};
+  return renderAlertPopupContent(0);
+}
+
+/* Render the popup content for a specific alert index in the current
+   overlapping list. Shows prev/next arrows if there are multiple alerts. */
+function renderAlertPopupContent(idx){
+  if(!alertPopupState)return '';
+  var alerts=alertPopupState.overlappingAlerts;
+  if(idx<0)idx=0;
+  if(idx>=alerts.length)idx=alerts.length-1;
+  alertPopupState.currentIndex=idx;
+  var a=alerts[idx];
+  var color=a.color;
+  var html='<div style="font-family:Inter,sans-serif;font-size:11px;max-width:300px">'+
+    '<h3 style="font-size:13px;color:'+color+';margin-bottom:6px">'+a.event+'</h3>';
+  /* If multiple alerts overlap, show the prev/next navigation */
+  if(alerts.length>1){
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:4px 8px;background:rgba(168,85,246,.1);border-radius:4px">'+
+      '<button onclick="cycleAlertPopup(-1)" style="background:var(--acc-g);border:1px solid var(--bdr);color:var(--acc);width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chevron-left"></i></button>'+
+      '<span style="font-size:9px;color:var(--t2);font-weight:600">'+(idx+1)+' of '+alerts.length+' alerts</span>'+
+      '<button onclick="cycleAlertPopup(1)" style="background:var(--acc-g);border:1px solid var(--bdr);color:var(--acc);width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center"><i class="fas fa-chevron-right"></i></button>'+
+      '</div>';
+  }
+  html+='<b>Areas:</b><br>'+a.areaDesc+'<br><br>'+
+    '<b>Expires:</b><br>'+a.ends;
+  if(a.headline){
+    html+='<br><br><b>'+a.headline+'</b>';
+  }
+  html+='</div>';
+  return html;
+}
+
+/* Cycle to the previous/next alert in the overlapping list and update
+   the popup content in place. Called by the prev/next arrow buttons. */
+function cycleAlertPopup(delta){
+  if(!alertPopupState)return;
+  var newIdx=alertPopupState.currentIndex+delta;
+  var n=alertPopupState.overlappingAlerts.length;
+  /* Wrap around */
+  if(newIdx<0)newIdx=n-1;
+  if(newIdx>=n)newIdx=0;
+  var newHtml=renderAlertPopupContent(newIdx);
+  /* Update the open popup's content */
+  if(alertMapInstance&&alertMapInstance._popup){
+    alertMapInstance._popup.setContent(newHtml);
+    /* Re-open the popup to force a content refresh */
+    alertMapInstance._popup.update();
   }
 }
 
@@ -5478,6 +5661,12 @@ async function fAlertMap(){
     var data=JSON.parse(txt);
     var features=data.features||[];
     var warnCount=0,watchCount=0,advCount=0,undrawn=0;
+    /* presentTypes: tracks which alert event types are on the map (for
+       the dynamic legend). drawnAlerts: stores all drawn alerts' geometry
+       + metadata so the popup can detect overlaps and let the user
+       cycle through multiple alerts at the same location. */
+    var presentTypes=[];
+    drawnAlerts=[];
     var showWarnings=document.getElementById('amLayerWarnings');
     var showWatches=document.getElementById('amLayerWatches');
     var showAdvisories=document.getElementById('amLayerAdvisories');
@@ -5522,13 +5711,21 @@ async function fAlertMap(){
       var alert=t.alert,event=t.event,cat=t.cat;
       var color=getAlertColor(event);
       var p=alert.properties;
-      var popupHtml='<div style="font-family:Inter,sans-serif;font-size:11px;max-width:300px">'+
-        '<h3 style="font-size:13px;color:'+color+';margin-bottom:6px">'+event+'</h3>'+
-        '<b>Areas:</b><br>'+(p.areaDesc||'Unknown')+'<br><br>'+
-        '<b>Expires:</b><br>'+(p.ends||'Unknown')+'<br><br>'+
-        (p.headline?'<b>'+p.headline+'</b>':'')+
-        '</div>';
 
+      /* Skip this alert if the user has unchecked it in the legend.
+         The alert is still counted in presentTypes (so the legend
+         checkbox remains visible for re-toggling) but not drawn. */
+      if(!ALERT_TYPE_HIDDEN[event]){
+        /* Track present alert types for the legend (count + category) */
+        var existing=presentTypes.find(function(pt){return pt.event===event});
+        if(existing){existing.count++}else{
+          presentTypes.push({event:event,color:color,cat:cat,count:1});
+        }
+      }
+
+      /* Resolve geometry (always needed - even hidden alerts so we can
+         show them in the overlap popup cycling if a visible polygon
+         is tapped) */
       var geoms=[];
       /* In focus mode, always use zone-based drawing for our matching counties
          only - this clips the alert to our tri-county area even when the alert
@@ -5553,16 +5750,55 @@ async function fAlertMap(){
         continue;
       }
 
+      /* Store this alert's resolved geometries + metadata in the global
+         drawnAlerts list. This is used by the popup overlap detection:
+         when a polygon is tapped, we find ALL alerts whose geometry
+         overlaps the tapped point, so the user can cycle through them. */
+      drawnAlerts.push({
+        event:event,
+        color:color,
+        cat:cat,
+        areaDesc:p.areaDesc||'Unknown',
+        ends:p.ends||'Unknown',
+        headline:p.headline||'',
+        description:p.description||'',
+        geoms:geoms
+      });
+
+      /* Skip drawing if the user has hidden this alert type */
+      if(ALERT_TYPE_HIDDEN[event]){
+        if(cat==='warnings')warnCount++;
+        else if(cat==='watches')watchCount++;
+        else advCount++;
+        continue;
+      }
+
       var geomData=geoms.length===1?geoms[0]:{type:'GeometryCollection',geometries:geoms};
       var polygon=L.geoJSON(geomData,{
         style:{color:color,weight:3,fillColor:color,fillOpacity:0.25}
       }).addTo(alertMapInstance);
-      polygon.bindPopup(popupHtml);
+      /* Bind a popup that shows all alerts overlapping the clicked point,
+         with prev/next arrows to cycle through them if there are multiple.
+         The popup HTML is generated dynamically by buildAlertPopup() at
+         click time (via a function reference) so it always reflects the
+         current drawnAlerts list. */
+      polygon.bindPopup(function(layer){
+        var ll=layer.getLatLng?layer.getLatLng():null;
+        /* For GeoJSON layers, get the click position from the map's last
+           click event. Leaflet passes the event to bindPopup's function
+           but the API is inconsistent across versions, so we use the
+           map's current center as a fallback and also try the event. */
+        var clickLatLng=alertMapInstance._lastClickLatLng||ll||(alertMapInstance.getCenter?alertMapInstance.getCenter():null);
+        return buildAlertPopup(clickLatLng);
+      });
       alertMapLayers[cat].push(polygon);
       if(cat==='warnings')warnCount++;
       else if(cat==='watches')watchCount++;
       else advCount++;
     }
+
+    /* Rebuild the legend with checkboxes for each present alert type */
+    buildAlertLegend(presentTypes);
 
     var total=warnCount+watchCount+advCount;
     if(countEl){
