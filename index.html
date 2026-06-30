@@ -3234,84 +3234,105 @@ function moonPhaseIcon(phase){
   }
 }
 
-/* Build the circular sky chart SVG showing sun and moon paths.
-   This is a 360° polar/compass plot:
-   - Center = observer (zenith, 90° elevation, directly overhead)
-   - Circle edge = horizon (0° elevation)
-   - Angle around = azimuth (N=top/0°, E=right/90°, S=bottom/180°, W=left/270°)
-   - Distance from center = elevation (90° at center → 0° at edge)
-   - Below horizon: clamped to just outside the horizon ring (dimmed)
+/* Build the clock-style sky chart SVG showing sun and moon paths.
+   This is a 2D time-clock representation:
+   - Top (12 o'clock) = solar noon (sun at highest point)
+   - Right (3 o'clock) = sunset
+   - Bottom (6 o'clock) = midnight (sun at lowest point)
+   - Left (9 o'clock) = sunrise
+   - Angle around = time of day (24h clock: noon=top, midnight=bottom)
+   - Distance from center = elevation (90° at center, 0° at horizon edge)
+   - Below horizon = outside the horizon ring (dimmed)
 
-   Sun and moon positions are plotted as (azimuth, elevation) polar
-   coordinates. Their daily paths form smooth curved loops because
-   azimuth changes continuously throughout the day. No straight lines. */
+   The sun's path forms a smooth loop: it starts at midnight (bottom,
+   below horizon), rises through sunrise (left), peaks at solar noon
+   (top, closest to center), descends through sunset (right), and
+   returns to midnight. No straight lines — time advances continuously
+   so the curve is smooth. */
 function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
   var W=340,H=340;
   var cx=W/2,cy=H/2;
-  var horizonR=140;   /* horizon circle radius (0° elevation) */
-  var maxR=horizonR;  /* max plotting radius */
+  var horizonR=135;   /* horizon circle radius (0° elevation) */
 
-  /* Convert elevation + azimuth to X,Y using polar coordinates.
-     - Azimuth: 0°=N(top), 90°=E(right), 180°=S(bottom), 270°=W(left)
-     - Elevation: 90°=center, 0°=horizon edge, negative=below horizon
-     Below-horizon positions are plotted just outside the horizon ring
-     (at radius horizonR + small offset, dimmed) so they're visible but
-     clearly underground. This avoids straight lines and overflow. */
-  function elevAzToXY(elev,az){
+  /* Convert time-of-day + elevation to X,Y on the clock chart.
+     - Time angle: solar noon (12pm) = top (12 o'clock = -90° in SVG).
+       We map 24 hours to 360°: noon=0°(top), 6pm=90°(right),
+       midnight=180°(bottom), 6am=270°(left).
+       Actually use a 12-hour clock feel: noon and midnight both at
+       top/bottom. Map hours from solar noon: 0h=top, 6h=right, 12h=bottom, 18h=left.
+     - Elevation: 90°=center, 0°=horizon edge, negative=outside ring */
+  function timeElevToXY(hoursFromSolarNoon,elev){
     elev=Math.max(-90,Math.min(90,elev));
     var r;
     if(elev>=0){
       /* Above horizon: 90°→0 (center), 0°→horizonR (edge) */
       r=horizonR*(1-elev/90);
     }else{
-      /* Below horizon: clamp to just outside the horizon ring.
-         Map 0°→-90° to horizonR+4 → horizonR+18 (small band outside) */
+      /* Below horizon: clamp to small band outside the ring */
       var belowFrac=Math.pow(Math.abs(elev)/90,0.5);
-      r=horizonR+4+belowFrac*14;
+      r=horizonR+4+belowFrac*16;
     }
-    /* Azimuth to SVG angle: 0°=N=up. SVG: 0°=right, 90°=down.
-       So angle = az - 90 (N=−90°=up, E=0°=right, S=90°=down, W=180°=left) */
-    var angleRad=(az-90)*Math.PI/180;
+    /* Time angle: 0h from noon = top. SVG angle: -90° = up.
+       hoursFromNoon: 0=top, 6=right, 12=bottom, -6/left=left.
+       angle = hoursFromNoon * 15° - 90° (so 0h→-90°=up, 6h→0°=right, etc.) */
+    var angleRad=(hoursFromSolarNoon*15-90)*Math.PI/180;
     var x=cx+r*Math.cos(angleRad);
     var y=cy+r*Math.sin(angleRad);
     return {x:x,y:y};
   }
 
-  /* Build the sun's path. Sample a full 24-hour cycle (not just sunrise
-     to sunset) so the path forms a complete smooth loop around the
-     compass. The sun's azimuth changes continuously through the day,
-     creating a smooth curve. */
+  /* Calculate hours from solar noon for a given timestamp */
+  function hoursFromNoon(t,solarNoonT){
+    return (t-solarNoonT)/(3600000);
+  }
+
+  /* Build the sun's path. Sample a full 24-hour cycle centered on
+     solar noon. The path forms a smooth loop: noon at top, midnight
+     at bottom, sunrise at left, sunset at right. */
   var sunPath='';
   var sunStarted=false;
-  if(times.sunrise&&times.sunset){
-    /* Sample from midnight to midnight (24 hours, 96 points = 15min steps) */
-    var midnight=new Date(times.sunrise);
-    midnight.setHours(0,0,0,0);
-    var midT=midnight.getTime();
+  if(times.solarNoon){
+    var solarNoonT=times.solarNoon.getTime();
+    /* Sample from -12h to +12h (24h cycle), 96 points = 15min steps */
     for(var i=0;i<=96;i++){
-      var t=midT+i*15*60*1000;
+      var t=solarNoonT-12*3600000+i*15*60*1000;
       var p=calcSunPosition(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
-      var xy=elevAzToXY(p.elevation,p.azimuth);
+      var hfn=hoursFromNoon(t,solarNoonT);
+      var xy=timeElevToXY(hfn,p.elevation);
       sunPath+=(sunStarted?' L':'M')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
       sunStarted=true;
     }
   }
-  /* Build the moon's path over 24 hours (same smooth loop approach). */
+
+  /* Build the moon's path. The moon doesn't peak at solar noon, so we
+     use its own "lunar noon" (when it's highest). Find the moon's peak
+     time in the 24h window, then sample around it. */
   var moonPath='';
   var moonStarted=false;
   var nowT=now.getTime();
-  var moonMidnight=nowT-(nowT%(24*3600000));
-  for(var i=0;i<=96;i++){
-    var t=moonMidnight+i*15*60*1000;
+  /* Find the moon's highest elevation in the next 24h (its "lunar noon") */
+  var moonPeakT=nowT;
+  var moonPeakElev=-90;
+  for(var i=0;i<96;i++){
+    var t=nowT+i*15*60*1000;
     var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
-    var xy=elevAzToXY(p.elevation,p.azimuth);
+    if(p.elevation>moonPeakElev){moonPeakElev=p.elevation;moonPeakT=t}
+  }
+  /* Sample 24h centered on lunar noon */
+  for(var i=0;i<=96;i++){
+    var t=moonPeakT-12*3600000+i*15*60*1000;
+    var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
+    var hfn=hoursFromNoon(t,moonPeakT);
+    var xy=timeElevToXY(hfn,p.elevation);
     moonPath+=(moonStarted?' L':'M')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
     moonStarted=true;
   }
 
-  /* Current sun and moon positions */
-  var sunXY=elevAzToXY(pos.elevation,pos.azimuth);
-  var moonXY=elevAzToXY(moonPos.elevation,moonPos.azimuth);
+  /* Current sun and moon positions (using their respective "noon" references) */
+  var sunHours=times.solarNoon?hoursFromNoon(now.getTime(),times.solarNoon.getTime()):0;
+  var moonHours=hoursFromNoon(now.getTime(),moonPeakT);
+  var sunXY=timeElevToXY(sunHours,pos.elevation);
+  var moonXY=timeElevToXY(moonHours,moonPos.elevation);
   var sunBelow=pos.elevation<0;
   var moonBelow=moonPos.elevation<0;
 
@@ -3323,41 +3344,47 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
   var svg='<div class="sky-chart-wrap">'+
     '<svg class="sky-chart" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
     '<defs>'+
-      '<radialGradient id="skyGradPolar" cx="0.5" cy="0.5" r="0.5">'+
+      '<radialGradient id="skyGradClock" cx="0.5" cy="0.5" r="0.5">'+
         '<stop offset="0%" stop-color="#1e1b4b"/>'+
         '<stop offset="60%" stop-color="#312e81"/>'+
         '<stop offset="100%" stop-color="#7c3aed"/>'+
       '</radialGradient>'+
-      '<radialGradient id="sunGlowP" cx="0.5" cy="0.5" r="0.5">'+
+      '<radialGradient id="sunGlowClk" cx="0.5" cy="0.5" r="0.5">'+
         '<stop offset="0%" stop-color="#fde047"/>'+
         '<stop offset="60%" stop-color="#fbbf24" stop-opacity="0.6"/>'+
         '<stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>'+
       '</radialGradient>'+
-      '<radialGradient id="moonGlowP" cx="0.5" cy="0.5" r="0.5">'+
+      '<radialGradient id="moonGlowClk" cx="0.5" cy="0.5" r="0.5">'+
         '<stop offset="0%" stop-color="#e2e8f0"/>'+
         '<stop offset="60%" stop-color="#c4b5fd" stop-opacity="0.5"/>'+
         '<stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>'+
       '</radialGradient>'+
     '</defs>'+
-    /* Sky circle (the visible sky dome from above) */
-    '<circle cx="'+cx+'" cy="'+cy+'" r="'+horizonR+'" fill="url(#skyGradPolar)" opacity="0.35"/>'+
+    /* Sky circle */
+    '<circle cx="'+cx+'" cy="'+cy+'" r="'+horizonR+'" fill="url(#skyGradClock)" opacity="0.35"/>'+
     /* Horizon circle (main ring) */
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+horizonR+'" fill="none" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="4,3"/>'+
     '<text x="'+(cx+horizonR*0.71+2)+'" y="'+(cy-horizonR*0.71-2)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
-    /* Elevation rings (30°, 60°) - concentric circles */
+    /* Elevation rings (30°, 60°) */
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+r30+'" fill="none" stroke="rgba(139,92,246,.12)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+r60+'" fill="none" stroke="rgba(139,92,246,.12)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
     '<text x="'+(cx+r30+3)+'" y="'+(cy+3)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">30°</text>'+
     '<text x="'+(cx+r60+3)+'" y="'+(cy+3)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">60°</text>'+
     '<text x="'+(cx+3)+'" y="'+(cy+3)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">90°</text>'+
-    /* Cardinal directions (compass labels) */
-    '<text x="'+cx+'" y="14" font-size="10" fill="#9898a8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">N</text>'+
-    '<text x="'+(W-10)+'" y="'+(cy+4)+'" font-size="10" fill="#9898a8" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">E</text>'+
-    '<text x="'+cx+'" y="'+(H-6)+'" font-size="10" fill="#9898a8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">S</text>'+
-    '<text x="10" y="'+(cy+4)+'" font-size="10" fill="#9898a8" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">W</text>'+
-    /* Cardinal direction lines (faint cross through center) */
-    '<line x1="'+cx+'" y1="20" x2="'+cx+'" y2="'+(H-20)+'" stroke="rgba(92,92,110,.08)" stroke-width="0.5"/>'+
-    '<line x1="20" y1="'+cy+'" x2="'+(W-20)+'" y2="'+cy+'" stroke="rgba(92,92,110,.08)" stroke-width="0.5"/>'+
+    /* Clock position labels (time-based, not compass) */
+    '<text x="'+cx+'" y="14" font-size="8" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">NOON</text>'+
+    '<text x="'+(W-10)+'" y="'+(cy+4)+'" font-size="8" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="end">6PM</text>'+
+    '<text x="'+cx+'" y="'+(H-6)+'" font-size="8" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">MIDNIGHT</text>'+
+    '<text x="10" y="'+(cy+4)+'" font-size="8" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="start">6AM</text>'+
+    /* Tick marks at 3AM, 9AM, 3PM, 9PM (faint) */
+    '<line x1="'+(cx+horizonR*0.71)+'" y1="'+(cy-horizonR*0.71)+'" x2="'+(cx+horizonR*0.79)+'" y2="'+(cy-horizonR*0.79)+'" stroke="#5c5c6e" stroke-width="0.5"/>'+
+    '<line x1="'+(cx-horizonR*0.71)+'" y1="'+(cy-horizonR*0.71)+'" x2="'+(cx-horizonR*0.79)+'" y2="'+(cy-horizonR*0.79)+'" stroke="#5c5c6e" stroke-width="0.5"/>'+
+    '<line x1="'+(cx+horizonR*0.71)+'" y1="'+(cy+horizonR*0.71)+'" x2="'+(cx+horizonR*0.79)+'" y2="'+(cy+horizonR*0.79)+'" stroke="#5c5c6e" stroke-width="0.5"/>'+
+    '<line x1="'+(cx-horizonR*0.71)+'" y1="'+(cy+horizonR*0.71)+'" x2="'+(cx-horizonR*0.79)+'" y2="'+(cy+horizonR*0.79)+'" stroke="#5c5c6e" stroke-width="0.5"/>'+
+    '<text x="'+(cx+horizonR*0.85)+'" y="'+(cy-horizonR*0.85)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">3PM</text>'+
+    '<text x="'+(cx-horizonR*0.85)+'" y="'+(cy-horizonR*0.85)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace" text-anchor="end">9AM</text>'+
+    '<text x="'+(cx+horizonR*0.85)+'" y="'+(cy+horizonR*0.85+4)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">9PM</text>'+
+    '<text x="'+(cx-horizonR*0.85)+'" y="'+(cy+horizonR*0.85+4)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace" text-anchor="end">3AM</text>'+
     /* Zenith marker (center dot) */
     '<circle cx="'+cx+'" cy="'+cy+'" r="2" fill="#5c5c6e"/>'+
     /* Moon path (smooth loop, drawn first) */
@@ -3365,11 +3392,11 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     /* Sun path (smooth loop) */
     (sunPath?'<path d="'+sunPath+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.6"/>':'')+
     /* Current moon position */
-    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="'+(moonBelow?6:10)+'" fill="url(#moonGlowP)" opacity="'+(moonBelow?0.4:1)+'"/>'+
+    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="'+(moonBelow?6:10)+'" fill="url(#moonGlowClk)" opacity="'+(moonBelow?0.4:1)+'"/>'+
     '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="'+(moonBelow?3:4)+'" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1" opacity="'+(moonBelow?0.6:1)+'"/>'+
     (moonBelow?'<text x="'+moonXY.x+'" y="'+(moonXY.y+14)+'" font-size="6" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">MOON</text>':'')+
     /* Current sun position */
-    '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="'+(sunBelow?8:14)+'" fill="url(#sunGlowP)" opacity="'+(sunBelow?0.3:1)+'"/>'+
+    '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="'+(sunBelow?8:14)+'" fill="url(#sunGlowClk)" opacity="'+(sunBelow?0.3:1)+'"/>'+
     '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="'+(sunBelow?4:6)+'" fill="#fde047" stroke="#fbbf24" stroke-width="1.5" opacity="'+(sunBelow?0.5:1)+'"/>'+
     (sunBelow?'<text x="'+sunXY.x+'" y="'+(sunXY.y+14)+'" font-size="6" fill="#fbbf24" font-family="JetBrains Mono,monospace" text-anchor="middle">SUN</text>':'')+
     '</svg>'+
