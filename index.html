@@ -3325,14 +3325,19 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
     /* Vertical line (12 to 6) - faint guide */
     '<line x1="'+cx+'" y1="'+(cy-clockR)+'" x2="'+cx+'" y2="'+(cy+clockR)+'" stroke="rgba(92,92,110,.1)" stroke-width="0.5"/>'+
-    /* Clock hour labels */
-    '<text x="'+cx+'" y="14" font-size="9" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">12</text>'+
-    '<text x="'+(cx+clockR+8)+'" y="'+(cy+4)+'" font-size="9" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="start">3</text>'+
-    '<text x="'+cx+'" y="'+(H-6)+'" font-size="9" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">6</text>'+
-    '<text x="'+(cx-clockR-8)+'" y="'+(cy+4)+'" font-size="9" fill="#9898a8" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="end">9</text>'+
-    /* Position labels */
-    '<text x="'+cx+'" y="26" font-size="7" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">NOON</text>'+
-    '<text x="'+cx+'" y="'+(H-16)+'" font-size="7" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">MIDNIGHT</text>'+
+    /* Solar position labels (replacing clock hour numbers) */
+    /* Top: SOLAR NOON */
+    '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
+    '<text x="'+cx+'" y="27" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Highest point</text>'+
+    /* Right: SUNSET */
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="start">West horizon</text>'+
+    /* Bottom: SOLAR MIDNIGHT */
+    '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
+    '<text x="'+cx+'" y="'+(H-5)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Lowest point</text>'+
+    /* Left: SUNRISE */
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="end">East horizon</text>'+
     /* Sun path (perfect circle - the clock face) */
     sunPathCircle+
     /* Moon path (perfect circle, slightly inside) */
