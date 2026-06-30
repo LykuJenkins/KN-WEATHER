@@ -3142,13 +3142,13 @@ function fSun(){
   }catch(e){}
   /* Build the curved sky chart SVG.
      The chart shows:
-     - A horizon line at the bottom
-     - The sun's path as a curve (semicircle) from sunrise to sunset
-     - The moon's path as a curve (offset from sun)
-     - Current positions of sun and moon as dots
-     - Elevation is the Y axis (0° at horizon, ~75° at top)
-     - Time of day is the X axis (sunrise to sunset) */
-  var chartHtml=buildSkyChart(times,pos,moon,moonPos,now,tzShort);
+     - Sun and moon paths as perfect circles (time clock)
+     - Hourly temperature overlay (purple line) showing thermal evolution
+     - Thermal peak band (orange-red) at hottest hours
+     - Cooling band (blue gradient) toward sunset
+     - PoP (precipitation probability) as dashed overlay */
+  var hourlyData=window.lastHourlyData||null;
+  var chartHtml=buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData);
   /* Build the HTML */
   var html='<div class="sun-panel">'+
     '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+' <span style="color:var(--t3);font-weight:400;font-size:9px">· All times '+tzShort+'</span></div>'+
@@ -3264,19 +3264,34 @@ function moonPhaseIcon(phase){
    The sun and moon travel ON the outer circle edge. Their position
    is determined by time-of-day relative to their respective "noon"
    (peak). The path is a perfect circle - no jagged lines. */
-function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
+function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
   var W=340,H=340;
   var cx=W/2,cy=H/2;
   var clockR=140;  /* the clock circle radius - sun/moon travel on this edge */
+  var tempR=clockR-30;  /* max radius for temperature curve (inside the clock) */
 
   /* Convert hours-from-noon to X,Y on the clock circle edge.
      0h from noon = 12 o'clock (top), 6h = 3 o'clock (right),
      12h = 6 o'clock (bottom), -6h = 9 o'clock (left).
      The position is always ON the circle edge (radius = clockR). */
   function timeToClockXY(hoursFromNoon){
-    /* Angle: 0h = top (-90° in SVG), 6h = right (0°), 12h = bottom (90°), -6h = left (180°) */
     var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
     return {x:cx+clockR*Math.cos(angleRad),y:cy+clockR*Math.sin(angleRad)};
+  }
+
+  /* Convert hours-from-noon + temperature to X,Y inside the clock.
+     Temperature is mapped to radius: hottest = closest to center,
+     coolest = closest to the clock edge. This creates a thermal curve
+     that visually shows how temperature follows the sun's path with
+     a thermal lag (peak temp is slightly past solar noon). */
+  function timeTempToXY(hoursFromNoon,temp,minTemp,maxTemp){
+    var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
+    /* Map temperature to radius: maxTemp→tempR*0.15 (near center),
+       minTemp→tempR (near clock edge) */
+    var tempRange=maxTemp-minTemp||1;
+    var tempFrac=(temp-minTemp)/tempRange;  /* 0=cool, 1=hot */
+    var r=tempR-(tempFrac*(tempR*0.85));  /* hot → smaller r (center) */
+    return {x:cx+r*Math.cos(angleRad),y:cy+r*Math.sin(angleRad)};
   }
 
   /* Calculate hours from solar noon for a given timestamp */
@@ -3284,22 +3299,17 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     return (t-noontimeT)/3600000;
   }
 
-  /* The sun's path is a perfect circle (the clock face itself).
-     The sun travels around it: midnight at bottom, sunrise at left,
-     noon at top, sunset at right. We draw the full circle as the
-     sun's path. */
-  var sunPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.4" stroke-dasharray="none"/>';
+  /* The sun's path is a perfect circle (the clock face itself). */
+  var sunPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.4"/>';
 
-  /* The moon's path is also a perfect circle - same clock face.
-     Drawn slightly inside the sun's circle so both are visible. */
+  /* The moon's path is also a perfect circle, slightly inside. */
   var moonPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockR-8)+'" fill="none" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4" stroke-dasharray="4,2"/>';
 
   /* Current sun position: on the sun's circle at the time angle */
   var sunHours=times.solarNoon?hoursFromNoon(now.getTime(),times.solarNoon.getTime()):0;
   var sunXY=timeToClockXY(sunHours);
 
-  /* Current moon position: find the moon's peak time (lunar noon),
-     then place on the moon's circle at the time angle */
+  /* Current moon position: find the moon's peak time (lunar noon) */
   var nowT=now.getTime();
   var moonPeakT=nowT;
   var moonPeakElev=-90;
@@ -3309,7 +3319,6 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     if(p.elevation>moonPeakElev){moonPeakElev=p.elevation;moonPeakT=t}
   }
   var moonHours=hoursFromNoon(now.getTime(),moonPeakT);
-  /* Moon is on the inner circle (clockR-8) */
   function timeToMoonClockXY(hoursFromNoon){
     var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
     var r=clockR-8;
@@ -3318,6 +3327,44 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
   var moonXY=timeToMoonClockXY(moonHours);
   var sunBelow=pos.elevation<0;
   var moonBelow=moonPos.elevation<0;
+
+  /* Build temperature overlay from hourly data.
+     Filter to today's hours (sunrise to sunset +/- 2h), find min/max
+     temp, and create a smooth curve path. Also identify the thermal
+     peak (hottest hour) for the highlight band. */
+  var tempPath='';
+  var tempPoints=[];
+  var popPath='';
+  var thermalPeakHour=null;
+  var thermalPeakTemp=-999;
+  var tempMin=999,tempMax=-999;
+  if(hourlyData&&times.solarNoon&&hourlyData.time&&hourlyData.temperature_2m){
+    var solarNoonT=times.solarNoon.getTime();
+    /* Collect today's hourly data: from -6h to +6h from solar noon */
+    for(var i=0;i<hourlyData.time.length;i++){
+      var hT=new Date(hourlyData.time[i]).getTime();
+      var hfn=(hT-solarNoonT)/3600000;
+      if(hfn>=-6&&hfn<=6){
+        var temp=hourlyData.temperature_2m[i];
+        if(temp!=null){
+          tempPoints.push({hoursFromNoon:hfn,temp:temp,pop:hourlyData.precipitation_probability?hourlyData.precipitation_probability[i]:0});
+          if(temp<tempMin)tempMin=temp;
+          if(temp>tempMax){
+            tempMax=temp;
+            thermalPeakHour=hfn;
+            thermalPeakTemp=temp;
+          }
+        }
+      }
+    }
+    /* Build the temperature curve path */
+    if(tempPoints.length>1){
+      for(var i=0;i<tempPoints.length;i++){
+        var xy=timeTempToXY(tempPoints[i].hoursFromNoon,tempPoints[i].temp,tempMin,tempMax);
+        tempPath+=(i===0?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
+      }
+    }
+  }
 
   /* Build the SVG */
   var svg='<div class="sky-chart-wrap">'+
@@ -3338,27 +3385,42 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
         '<stop offset="60%" stop-color="#c4b5fd" stop-opacity="0.5"/>'+
         '<stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>'+
       '</radialGradient>'+
+      '<radialGradient id="thermalPeak" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#ef4444" stop-opacity="0.25"/>'+
+        '<stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>'+
+      '</radialGradient>'+
     '</defs>'+
     /* Clock face background */
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="url(#clockBg)" opacity="0.3"/>'+
+    /* Thermal peak band (orange-red highlight at hottest hour) */
+    (thermalPeakHour!==null?'<circle cx="'+timeToClockXY(thermalPeakHour).x+'" cy="'+timeToClockXY(thermalPeakHour).y+'" r="35" fill="url(#thermalPeak)"/>':'')+
     /* Horizon line: horizontal diameter (3 o'clock to 9 o'clock) */
     '<line x1="'+(cx-clockR)+'" y1="'+cy+'" x2="'+(cx+clockR)+'" y2="'+cy+'" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="4,3"/>'+
     '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
     /* Vertical line (12 to 6) - faint guide */
     '<line x1="'+cx+'" y1="'+(cy-clockR)+'" x2="'+cx+'" y2="'+(cy+clockR)+'" stroke="rgba(92,92,110,.1)" stroke-width="0.5"/>'+
-    /* Solar position labels (replacing clock hour numbers) */
-    /* Top: SOLAR NOON */
+    /* Solar position labels */
     '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
     '<text x="'+cx+'" y="27" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Highest point</text>'+
-    /* Right: SUNSET */
     '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
     '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="start">West horizon</text>'+
-    /* Bottom: SOLAR MIDNIGHT */
     '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
     '<text x="'+cx+'" y="'+(H-5)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Lowest point</text>'+
-    /* Left: SUNRISE */
     '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
     '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="end">East horizon</text>'+
+    /* Temperature curve overlay (purple line inside the clock) */
+    (tempPath?'<path d="'+tempPath+'" fill="none" stroke="#a855f6" stroke-width="2.5" opacity="0.8" stroke-linecap="round" stroke-linejoin="round"/>':'')+
+    /* Temperature data points (small dots at each hour) */
+    (tempPoints.length>0?tempPoints.map(function(tp){
+      var xy=timeTempToXY(tp.hoursFromNoon,tp.temp,tempMin,tempMax);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="2" fill="#a855f6" opacity="0.6"/>';
+    }).join(''):'')+
+    /* Thermal peak marker (orange dot at hottest hour) */
+    (thermalPeakHour!==null?(function(){
+      var xy=timeTempToXY(thermalPeakHour,thermalPeakTemp,tempMin,tempMax);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="5" fill="#ef4444" stroke="#fca5a5" stroke-width="1.5" opacity="0.9"/>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-10).toFixed(1)+'" font-size="7" fill="#ef4444" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>';
+    })():'')+
     /* Sun path (perfect circle - the clock face) */
     sunPathCircle+
     /* Moon path (perfect circle, slightly inside) */
@@ -3374,6 +3436,8 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     '<div class="sky-chart-legend">'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#a855f6"></span>Temp</span>'+
+      (thermalPeakHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#ef4444"></span>Peak '+Math.round(thermalPeakTemp)+'°</span>':'')+
       '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
     '</div>'+
   '</div>';
@@ -3892,7 +3956,11 @@ function rCu(c){
   if(rufusImg){rufusImg.src='./rufus/'+rufus.img;rufusImg.onerror=function(){this.src='./rufus/default.jpg'}}
   if(rufusCap){rufusCap.innerHTML='<strong>'+rufus.caption+'</strong>'}
 }
-function rHr(h){var now=new Date(),ix=h.time.findIndex(function(t){return new Date(t)>=now}),s=Math.max(0,ix),e=Math.min(h.time.length,s+24),lb=[],tp=[],pp=[];for(var i=s;i<e;i++){var d=new Date(h.time[i]);lb.push(d.toLocaleTimeString('en-US',{hour:'numeric',hour12:true}));tp.push(h.temperature_2m[i]);pp.push(h.precipitation_probability[i])}if(hCh)hCh.destroy();hCh=new Chart(document.getElementById('hCh').getContext('2d'),{type:'line',data:{labels:lb,datasets:[{label:'Temp (°F)',data:tp,borderColor:'#a855f6',backgroundColor:'rgba(168,85,246,.08)',fill:true,tension:.4,borderWidth:2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#a855f6',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2,yAxisID:'y'},{label:'PoP (%)',data:pp,borderColor:'rgba(192,132,252,.5)',backgroundColor:'rgba(192,132,252,.04)',fill:true,tension:.4,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'top',align:'end',labels:{color:'#9898a8',font:{size:9,family:'Inter'},boxWidth:12,boxHeight:2,padding:8}},tooltip:{backgroundColor:'rgba(14,14,21,.95)',titleColor:'#e4e4ec',bodyColor:'#9898a8',borderColor:'rgba(168,85,246,.2)',borderWidth:1,padding:8,cornerRadius:8,callbacks:{label:function(c){return c.datasetIndex===0?' '+c.parsed.y+'°F':' '+c.parsed.y+'%'}}}},scales:{x:{grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#5c5c6e',font:{size:8,family:'Inter'},maxRotation:0,autoSkip:true,maxTicksLimit:8}},y:{position:'left',grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#9898a8',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'°'}}},y1:{position:'right',min:0,max:100,grid:{display:false},ticks:{color:'#5c5c6e',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'%'},stepSize:25}}}}})}
+function rHr(h){
+  /* Cache the full hourly data (not just the 24h slice) so other panels
+     like the sun chart can access today's temperature/PoP for overlay. */
+  if(typeof window!=='undefined')window.lastHourlyData=h;
+  var now=new Date(),ix=h.time.findIndex(function(t){return new Date(t)>=now}),s=Math.max(0,ix),e=Math.min(h.time.length,s+24),lb=[],tp=[],pp=[];for(var i=s;i<e;i++){var d=new Date(h.time[i]);lb.push(d.toLocaleTimeString('en-US',{hour:'numeric',hour12:true}));tp.push(h.temperature_2m[i]);pp.push(h.precipitation_probability[i])}if(hCh)hCh.destroy();hCh=new Chart(document.getElementById('hCh').getContext('2d'),{type:'line',data:{labels:lb,datasets:[{label:'Temp (°F)',data:tp,borderColor:'#a855f6',backgroundColor:'rgba(168,85,246,.08)',fill:true,tension:.4,borderWidth:2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#a855f6',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2,yAxisID:'y'},{label:'PoP (%)',data:pp,borderColor:'rgba(192,132,252,.5)',backgroundColor:'rgba(192,132,252,.04)',fill:true,tension:.4,borderWidth:1.5,borderDash:[4,4],pointRadius:0,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'top',align:'end',labels:{color:'#9898a8',font:{size:9,family:'Inter'},boxWidth:12,boxHeight:2,padding:8}},tooltip:{backgroundColor:'rgba(14,14,21,.95)',titleColor:'#e4e4ec',bodyColor:'#9898a8',borderColor:'rgba(168,85,246,.2)',borderWidth:1,padding:8,cornerRadius:8,callbacks:{label:function(c){return c.datasetIndex===0?' '+c.parsed.y+'°F':' '+c.parsed.y+'%'}}}},scales:{x:{grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#5c5c6e',font:{size:8,family:'Inter'},maxRotation:0,autoSkip:true,maxTicksLimit:8}},y:{position:'left',grid:{color:'rgba(139,92,246,.06)',drawBorder:false},ticks:{color:'#9898a8',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'°'}}},y1:{position:'right',min:0,max:100,grid:{display:false},ticks:{color:'#5c5c6e',font:{size:8,family:'JetBrains Mono'},callback:function(v){return v+'%'},stepSize:25}}}}})}
 function rFc(d){var c=document.getElementById('fcL'),al=d.temperature_2m_max.concat(d.temperature_2m_min),mn=Math.min.apply(null,al),mx=Math.max.apply(null,al),rn=mx-mn||1,ht='';for(var i=0;i<d.time.length;i++){var inf=wI(d.weather_code[i],true),lo=d.temperature_2m_min[i],hi=d.temperature_2m_max[i],pop=d.precipitation_probability_max[i]||0,lf=((lo-mn)/rn)*100,wd=((hi-lo)/rn)*100;ht+='<div class="fr"><div class="fd '+(i===0?'to':'')+'">'+gDN(d.time[i])+'</div><div class="fi"><i class="fas '+inf.i+'"></i></div><div class="tbc"><div class="tl2">'+Math.round(lo)+'°</div><div class="tbt"><div class="tbr" style="left:'+lf+'%;width:'+Math.max(wd,4)+'%"></div></div><div class="thi2">'+Math.round(hi)+'°</div></div><div class="fp">'+(pop>0?'<i class="fas fa-droplet"></i>'+pop+'%':'')+'</div></div>'}c.innerHTML=ht}
 function rTh(cu,h){
   var c=document.getElementById('thL');
