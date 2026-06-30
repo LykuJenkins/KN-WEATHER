@@ -2930,29 +2930,27 @@ function equationOfTime(T){
    Uses the NOAA solar calculator algorithm. */
 function calcSunTimes(lat,lon,date){
   var result={sunrise:null,sunset:null,solarNoon:null,dawn:null,dusk:null};
-  /* Julian Day for the given date at 00:00 UTC */
-  var jd=toJulianDay(new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())));
+  /* Midnight UTC for the given date - this is our reference point.
+     All sun times are computed as minutes from this midnight. */
+  var midnightUTC=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));
+  var jd=toJulianDay(midnightUTC);
   var T=(jd-2451545.0)/36525;
   var decl=sunDeclination(T);
   var eqTime=equationOfTime(T);
-  /* Solar noon: 12:00 - longitude/15 - equationOfTime (in minutes) */
-  var solarNoonOffset=(720-4*lon-eqTime*4);  /* minutes from UTC midnight */
-  result.solarNoon=new Date(jd*86400000-7184836800000+solarNoonOffset*60000);
+  /* Solar noon: minutes from UTC midnight = 720 - 4*longitude - 4*eqTime */
+  var solarNoonMinutes=(720-4*lon-eqTime*4);
+  result.solarNoon=new Date(midnightUTC.getTime()+solarNoonMinutes*60000);
   /* Hour angle for sunrise/sunset (using -0.833 degrees for the Sun's
      center at the horizon, corrected for atmospheric refraction) */
   var haSunrise=calcHourAngle(decl,lat,-0.833);
   var haDawn=calcHourAngle(decl,lat,-6);  /* civil dawn/dusk: -6 degrees */
   if(!isNaN(haSunrise)){
-    var sunriseOffset=solarNoonOffset-haSunrise*4;
-    var sunsetOffset=solarNoonOffset+haSunrise*4;
-    result.sunrise=new Date(jd*86400000-7184836800000+sunriseOffset*60000);
-    result.sunset=new Date(jd*86400000-7184836800000+sunsetOffset*60000);
+    result.sunrise=new Date(midnightUTC.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
+    result.sunset=new Date(midnightUTC.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
   }
   if(!isNaN(haDawn)){
-    var dawnOffset=solarNoonOffset-haDawn*4;
-    var duskOffset=solarNoonOffset+haDawn*4;
-    result.dawn=new Date(jd*86400000-7184836800000+dawnOffset*60000);
-    result.dusk=new Date(jd*86400000-7184836800000+duskOffset*60000);
+    result.dawn=new Date(midnightUTC.getTime()+(solarNoonMinutes-haDawn*4)*60000);
+    result.dusk=new Date(midnightUTC.getTime()+(solarNoonMinutes+haDawn*4)*60000);
   }
   return result;
 }
@@ -3011,9 +3009,16 @@ function fSun(){
   var times=calcSunTimes(lat,lon,now);
   /* Calculate current sun position */
   var pos=calcSunPosition(lat,lon,now);
+  /* Get timezone abbreviation (EDT/EST) for display */
+  var tzShort='EDT';
+  try{
+    var tzFmt=new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,timeZoneName:'short'});
+    var tzPart=tzFmt.formatToParts(now).find(function(p){return p.type==='timeZoneName'});
+    if(tzPart&&tzPart.value)tzShort=tzPart.value;
+  }catch(e){}
   /* Build the HTML */
   var html='<div class="sun-panel">'+
-    '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+'</div>'+
+    '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+' <span style="color:var(--t3);font-weight:400;font-size:9px">· All times '+tzShort+'</span></div>'+
     '<div class="sun-grid">'+
       '<div class="sun-card sun-primary">'+
         '<div class="sun-card-icon"><i class="fas fa-sun" style="color:#fbbf24"></i></div>'+
