@@ -602,6 +602,17 @@ body.capturing .mom-mode-toggle{display:none}
 .sun-arc-labels span:first-child{text-align:left}
 .sun-arc-labels span:last-child{text-align:right}
 
+/* Sky chart (curved sun/moon path graph) */
+.sky-chart-wrap{margin-top:6px;padding:12px;background:rgba(0,0,0,.2);border-radius:var(--rs);border:1px solid var(--bdr)}
+.sky-chart{width:100%;height:auto;display:block;max-height:200px}
+.sky-chart-legend{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
+.sky-leg-item{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--t2);font-weight:600}
+.sky-leg-dot{width:10px;height:3px;border-radius:2px}
+.sky-leg-time{margin-left:auto;font-size:9px;color:var(--t3);font-family:'JetBrains Mono',monospace}
+/* Moon card styling */
+.moon-card{background:rgba(196,181,253,.05)!important;border-color:rgba(196,181,253,.15)!important}
+.moon-elev{background:rgba(129,140,248,.04)!important;border-color:rgba(129,140,248,.12)!important}
+
 /* Nowcast Engine panel */
 .nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
 .nc-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px}
@@ -2998,6 +3009,94 @@ function fmtSunTime(date){
   return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'2-digit',minute:'2-digit',hour12:false});
 }
 
+/* ── Moon calculations ──────────────────────────────────────────────────────
+   Moon phase and position calculations using Jean Meeus' algorithms.
+   No API needed - all math is done in-browser. */
+
+/* Calculate moon phase for a given date.
+   Returns {phase, age, illumination, name} where:
+     phase       - 0 to 1 (0=new, 0.5=full)
+     age         - days since new moon
+     illumination- 0 to 1 (fraction illuminated)
+     name        - phase name string */
+function calcMoonPhase(date){
+  var jd=date.getTime()/86400000+2440587.5;
+  var synodic=29.530588853;
+  var daysSinceNew=jd-2451550.1;
+  var newMoons=Math.floor(daysSinceNew/synodic);
+  var phase=(daysSinceNew/synodic)-newMoons;
+  if(phase<0)phase+=1;
+  var age=phase*synodic;
+  var illumination=(1-Math.cos(2*Math.PI*phase))/2;
+  var name;
+  if(phase<0.0335||phase>=0.9665)name='New Moon';
+  else if(phase<0.2165)name='Waxing Crescent';
+  else if(phase<0.2835)name='First Quarter';
+  else if(phase<0.4665)name='Waxing Gibbous';
+  else if(phase<0.5335)name='Full Moon';
+  else if(phase<0.7165)name='Waning Gibbous';
+  else if(phase<0.7835)name='Last Quarter';
+  else name='Waning Crescent';
+  return {phase:phase,age:age,illumination:illumination,name:name};
+}
+
+/* Calculate the moon's declination and right ascension for a given date.
+   Uses a simplified version of Jean Meeus' moon position algorithm. */
+function calcMoonPosition(date){
+  var jd=date.getTime()/86400000+2440587.5;
+  var T=(jd-2451545.0)/36525;
+  /* Mean longitude of the moon */
+  var L=218.316+481267.8813*T;
+  /* Mean anomaly of the moon */
+  var M=134.963+477198.8676*T;
+  /* Moon's argument of latitude */
+  var F=93.272+483202.0175*T;
+  /* Sun's mean anomaly (for perturbations) */
+  var Ms=357.529+35999.0503*T;
+  /* Moon's ecliptic longitude (with major perturbation) */
+  var lambda=L+6.289*Math.sin(M*Math.PI/180)+1.274*Math.sin((2*M-2*Ms)*Math.PI/180)+0.658*Math.sin(2*Ms*Math.PI/180);
+  /* Moon's ecliptic latitude */
+  var beta=5.128*Math.sin(F*Math.PI/180);
+  /* Obliquity of the ecliptic */
+  var epsilon=23.439-0.0004*T;
+  /* Convert to equatorial coordinates (declination and RA) */
+  var lambdaRad=lambda*Math.PI/180;
+  var betaRad=beta*Math.PI/180;
+  var epsRad=epsilon*Math.PI/180;
+  var decl=Math.asin(Math.sin(epsRad)*Math.sin(lambdaRad)*Math.cos(betaRad)+Math.cos(epsRad)*Math.sin(betaRad))*180/Math.PI;
+  var ra=Math.atan2(Math.sin(lambdaRad)*Math.cos(epsRad)-Math.tan(betaRad)*Math.sin(epsRad),Math.cos(lambdaRad))*180/Math.PI;
+  if(ra<0)ra+=360;
+  return {declination:decl,ra:ra};
+}
+
+/* Calculate the moon's elevation and azimuth for a given lat/lon and date.
+   Returns {elevation, azimuth} in degrees. */
+function calcMoonPositionAltAz(lat,lon,date){
+  var pos=calcMoonPosition(date);
+  var jd=date.getTime()/86400000+2440587.5;
+  var T=(jd-2451545.0)/36525;
+  /* Greenwich Sidereal Time */
+  var gmst=280.46061837+360.98564736629*(jd-2451545.0)+0.000387933*T*T;
+  gmst=gmst%360;
+  if(gmst<0)gmst+=360;
+  /* Local Sidereal Time */
+  var lst=gmst+lon;
+  /* Hour angle of the moon */
+  var ha=lst-pos.ra;
+  var latRad=lat*Math.PI/180;
+  var declRad=pos.declination*Math.PI/180;
+  var haRad=ha*Math.PI/180;
+  /* Moon elevation */
+  var sinElev=Math.sin(latRad)*Math.sin(declRad)+Math.cos(latRad)*Math.cos(declRad)*Math.cos(haRad);
+  var elevation=Math.asin(Math.max(-1,Math.min(1,sinElev)))*180/Math.PI;
+  /* Moon azimuth (from North, clockwise) */
+  var cosAz=(Math.sin(declRad)-Math.sin(latRad)*sinElev)/(Math.cos(latRad)*Math.cos(elevation*Math.PI/180));
+  cosAz=Math.max(-1,Math.min(1,cosAz));
+  var azimuth=Math.acos(cosAz)*180/Math.PI;
+  if(Math.sin(haRad)>0)azimuth=360-azimuth;
+  return {elevation:elevation,azimuth:azimuth};
+}
+
 /* Refresh the Sunrise & Sunset panel for the currently-selected county. */
 function fSun(){
   var content=document.getElementById('sunContent');
@@ -3009,6 +3108,9 @@ function fSun(){
   var times=calcSunTimes(lat,lon,now);
   /* Calculate current sun position */
   var pos=calcSunPosition(lat,lon,now);
+  /* Calculate moon phase + position */
+  var moon=calcMoonPhase(now);
+  var moonPos=calcMoonPositionAltAz(lat,lon,now);
   /* Get timezone abbreviation (EDT/EST) for display */
   var tzShort='EDT';
   try{
@@ -3016,6 +3118,15 @@ function fSun(){
     var tzPart=tzFmt.formatToParts(now).find(function(p){return p.type==='timeZoneName'});
     if(tzPart&&tzPart.value)tzShort=tzPart.value;
   }catch(e){}
+  /* Build the curved sky chart SVG.
+     The chart shows:
+     - A horizon line at the bottom
+     - The sun's path as a curve (semicircle) from sunrise to sunset
+     - The moon's path as a curve (offset from sun)
+     - Current positions of sun and moon as dots
+     - Elevation is the Y axis (0° at horizon, ~75° at top)
+     - Time of day is the X axis (sunrise to sunset) */
+  var chartHtml=buildSkyChart(times,pos,moon,moonPos,now,tzShort);
   /* Build the HTML */
   var html='<div class="sun-panel">'+
     '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+' <span style="color:var(--t3);font-weight:400;font-size:9px">· All times '+tzShort+'</span></div>'+
@@ -3059,21 +3170,191 @@ function fSun(){
           '<div class="sun-card-sub">'+(pos.elevation>=0?'Above horizon':'Below horizon')+'</div>'+
         '</div>'+
       '</div>'+
-    '</div>'+
-    '<div class="sun-arc">'+
-      '<div class="sun-arc-track">'+
-        '<div class="sun-arc-line"></div>'+
-        '<div class="sun-arc-sun" id="sunArcSun" style="left:'+calcSunArcPosition(times,now)+'%"></div>'+
-        '<div class="sun-arc-labels">'+
-          '<span>'+fmtSunTime(times.sunrise)+'</span>'+
-          '<span>Solar Noon '+fmtSunTime(times.solarNoon)+'</span>'+
-          '<span>'+fmtSunTime(times.sunset)+'</span>'+
+      '<div class="sun-card moon-card">'+
+        '<div class="sun-card-icon">'+moonPhaseIcon(moon.phase)+'</div>'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Moon Phase</div>'+
+          '<div class="sun-card-val" style="font-size:13px">'+moon.name+'</div>'+
+          '<div class="sun-card-sub">'+(moon.illumination*100).toFixed(0)+'% illuminated · '+moon.age.toFixed(1)+'d old</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card moon-elev">'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Moon Elevation</div>'+
+          '<div class="sun-card-val">'+(moonPos.elevation>=0?'<span style="color:#c4b5fd">'+moonPos.elevation.toFixed(1)+'°</span>':'<span style="color:#475569">'+moonPos.elevation.toFixed(1)+'°</span>')+'</div>'+
+          '<div class="sun-card-sub">'+(moonPos.elevation>=0?'Above horizon':'Below horizon')+'</div>'+
         '</div>'+
       '</div>'+
     '</div>'+
+    chartHtml+
   '</div>';
   content.innerHTML=html;
   mkUp('sun');
+}
+
+/* Return an SVG icon representing the moon phase (0 to 1).
+   0 = new moon, 0.5 = full moon, 0.25 = first quarter, 0.75 = last quarter */
+function moonPhaseIcon(phase){
+  /* Build a circular moon with the illuminated portion visible.
+     We use two overlapping circles: a dark base and a light overlay
+     whose shape changes with the phase. */
+  var size=18;
+  var r=size/2-1;
+  var cx=size/2,cy=size/2;
+  if(phase<0.5){
+    /* Waxing: illumination from the right */
+    var illuminated=Math.cos((0.5-phase)*2*Math.PI);  /* -1 to 1 */
+    /* The terminator is an ellipse with width = r * illuminated */
+    var termW=Math.abs(r*illuminated);
+    var isWaxing=phase<0.25;
+    /* For waxing crescent: dark on left, light on right */
+    /* For waxing gibbous: mostly light, dark crescent on left */
+    var illumPct=phase*2;  /* 0 at new, 1 at full (0.5) */
+    if(illumPct<0.5){
+      /* Crescent: small light area on the right */
+      return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="0.5"/><path d="M '+cx+','+(cy-r)+' A '+r+','+(r)+' 0 0,1 '+cx+','+(cy+r)+' A '+termW+','+(r)+' 0 0,'+(illumPct<0.25?0:1)+' '+cx+','+(cy-r)+'" fill="#e2e8f0"/></svg>';
+    }else{
+      /* Gibbous: mostly light, dark crescent on the left */
+      var darkW=Math.abs(r*Math.cos((illumPct-0.5)*2*Math.PI));
+      return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#e2e8f0"/><path d="M '+cx+','+(cy-r)+' A '+r+','+(r)+' 0 0,0 '+cx+','+(cy+r)+' A '+darkW+','+(r)+' 0 0,1 '+cx+','+(cy-r)+'" fill="#1e1b4b"/></svg>';
+    }
+  }else{
+    /* Waning: illumination from the left */
+    var illumPct=(1-phase)*2;  /* 0 at new (via full), 1 at new */
+    if(illumPct>0.5){
+      /* Gibbous: mostly light, dark crescent on the right */
+      var darkW=Math.abs(r*Math.cos((illumPct-0.5)*2*Math.PI));
+      return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#e2e8f0"/><path d="M '+cx+','+(cy-r)+' A '+r+','+(r)+' 0 0,1 '+cx+','+(cy+r)+' A '+darkW+','+(r)+' 0 0,0 '+cx+','+(cy-r)+'" fill="#1e1b4b"/></svg>';
+    }else{
+      /* Crescent: small light area on the left */
+      var termW=Math.abs(r*Math.cos(illumPct*2*Math.PI));
+      return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="0.5"/><path d="M '+cx+','+(cy-r)+' A '+r+','+(r)+' 0 0,0 '+cx+','+(cy+r)+' A '+termW+','+(r)+' 0 0,'+(illumPct<0.25?1:0)+' '+cx+','+(cy-r)+'" fill="#e2e8f0"/></svg>';
+    }
+  }
+}
+
+/* Build the curved sky chart SVG showing sun and moon paths.
+   The chart is a semicircular arc representing the sky from horizon to
+   zenith. The sun's path is a yellow curve, the moon's path is a purple
+   curve, and current positions are shown as glowing dots. */
+function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
+  var W=340,H=180;  /* SVG dimensions */
+  var cx=W/2;       /* center X */
+  var horizonY=150; /* Y position of horizon line */
+  var arcR=120;     /* radius of the sky arc */
+  var arcTopY=horizonY-arcR;  /* Y of the top of the arc (zenith) */
+
+  /* Helper: convert elevation (degrees) + time-of-day to X,Y on the chart.
+     X is determined by the azimuth (east=left, west=right).
+     Y is determined by the elevation (0°=horizon, 90°=zenith). */
+  function elevAzToXY(elev,az){
+    /* Clamp elevation to [-90, 90] */
+    elev=Math.max(-90,Math.min(90,elev));
+    /* Y: 0° at horizon (horizonY), 90° at zenith (arcTopY).
+       Below horizon: continue below the line but clamp. */
+    var yFrac=1-(elev/90);  /* 0=zenith(top), 1=horizon(bottom), 2=-90(bottom) */
+    var y=arcTopY+(horizonY-arcTopY)*yFrac;
+    if(elev<0)y=horizonY+Math.min(20,Math.abs(elev)*0.3);
+    /* X: based on azimuth. 90°=East(left), 180°=South(center), 270°=West(right).
+       Map 60°-300° to the chart width. */
+    var azFrac;
+    if(az<90)azFrac=0;
+    else if(az>270)azFrac=1;
+    else azFrac=(az-90)/180;
+    var x=20+(W-40)*azFrac;
+    return {x:x,y:y};
+  }
+
+  /* Build the sun's daily path as a curve. Sample elevation/azimuth
+     from sunrise to sunset in 24 steps. */
+  var sunPath='';
+  var sunPts=[];
+  if(times.sunrise&&times.sunset){
+    var srT=times.sunrise.getTime(),ssT=times.sunset.getTime();
+    for(var i=0;i<=24;i++){
+      var t=srT+(ssT-srT)*i/24;
+      var p=calcSunPosition(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
+      var xy=elevAzToXY(p.elevation,p.azimuth);
+      sunPts.push(xy);
+      sunPath+=(i===0?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
+    }
+  }
+  /* Build the moon's daily path. The moon is visible at different times
+     than the sun, so we sample over 24 hours centered on now. */
+  var moonPath='';
+  var moonPts=[];
+  var nowT=now.getTime();
+  for(var i=0;i<=24;i++){
+    var t=nowT-12*3600000+i*3600000;  /* -12h to +12h */
+    var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
+    if(p.elevation>=-5){  /* only draw when near or above horizon */
+      var xy=elevAzToXY(p.elevation,p.azimuth);
+      moonPts.push(xy);
+      moonPath+=(moonPts.length===1?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
+    }
+  }
+
+  /* Current sun and moon positions */
+  var sunXY=elevAzToXY(pos.elevation,pos.azimuth);
+  var moonXY=elevAzToXY(moonPos.elevation,moonPos.azimuth);
+
+  /* Build the SVG */
+  var svg='<div class="sky-chart-wrap">'+
+    '<svg class="sky-chart" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
+    /* Sky gradient background */
+    '<defs>'+
+      '<linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#1e1b4b"/>'+
+        '<stop offset="50%" stop-color="#312e81"/>'+
+        '<stop offset="90%" stop-color="#7c3aed"/>'+
+        '<stop offset="100%" stop-color="#1e1b4b"/>'+
+      '</linearGradient>'+
+      '<radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#fde047"/>'+
+        '<stop offset="60%" stop-color="#fbbf24" stop-opacity="0.6"/>'+
+        '<stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>'+
+      '</radialGradient>'+
+      '<radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#e2e8f0"/>'+
+        '<stop offset="60%" stop-color="#c4b5fd" stop-opacity="0.5"/>'+
+        '<stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>'+
+      '</radialGradient>'+
+    '</defs>'+
+    /* Sky background (semicircle) */
+    '<path d="M 20,'+horizonY+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+horizonY+' Z" fill="url(#skyGrad)" opacity="0.3"/>'+
+    /* Horizon line */
+    '<line x1="10" y1="'+horizonY+'" x2="'+(W-10)+'" y2="'+horizonY+'" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="3,2"/>'+
+    '<text x="12" y="'+(horizonY-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
+    /* Elevation grid lines (30°, 60°) */
+    '<path d="M 20,'+elevAzToXY(30,180).y+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+elevAzToXY(30,180).y+'" fill="none" stroke="rgba(139,92,246,.1)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
+    '<path d="M 20,'+elevAzToXY(60,180).y+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+elevAzToXY(60,180).y+'" fill="none" stroke="rgba(139,92,246,.1)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
+    '<text x="'+(cx+2)+'" y="'+(elevAzToXY(30,180).y-2)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">30°</text>'+
+    '<text x="'+(cx+2)+'" y="'+(elevAzToXY(60,180).y-2)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">60°</text>'+
+    /* Cardinal directions on horizon */
+    '<text x="20" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">E</text>'+
+    '<text x="'+cx+'" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">S</text>'+
+    '<text x="'+(W-20)+'" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">W</text>'+
+    /* Moon path (drawn first, behind sun) */
+    (moonPath?'<path d="'+moonPath+'" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.5"/>':'')+
+    /* Sun path */
+    (sunPath?'<path d="'+sunPath+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.6"/>':'')+
+    /* Current moon position */
+    (moonPos.elevation>=-5?
+      '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="10" fill="url(#moonGlow)"/>'+
+      '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="4" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1"/>':'')+
+    /* Current sun position */
+    (pos.elevation>=-5?
+      '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="14" fill="url(#sunGlow)"/>'+
+      '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="6" fill="#fde047" stroke="#fbbf24" stroke-width="1.5"/>':'')+
+    '</svg>'+
+    /* Legend */
+    '<div class="sky-chart-legend">'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun Path</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon Path</span>'+
+      '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
+    '</div>'+
+  '</div>';
+  return svg;
 }
 
 /* Calculate the sun's position along the arc as a percentage (0-100).
