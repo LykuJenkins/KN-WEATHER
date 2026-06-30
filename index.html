@@ -3389,11 +3389,11 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
   var moonBelow=moonPos.elevation<0;
 
   /* Build temperature overlay from hourly data.
-     We use the hourly forecast to determine temperature at each clock
-     position, then create a heat gradient that colors the sun's path
-     circle from red (hot, near solar noon) to blue (cold, near solar
-     midnight). This makes the sun's travel path itself show the heat
-     gradient throughout the day. */
+     We use the hourly forecast for the NEXT 24 HOURS (from current time
+     forward) to create a heat gradient that colors the sun's path circle.
+     This shows how temperature will rise and fall as the sun moves
+     through its cycle, covering the full next-day forecast just like
+     the hourly forecast chart. */
   var tempPoints=[];
   var thermalPeakHour=null;
   var thermalPeakTemp=-999;
@@ -3402,11 +3402,15 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
   var tempMin=999,tempMax=-999;
   if(hourlyData&&times.solarNoon&&hourlyData.time&&hourlyData.temperature_2m){
     var solarNoonT=times.solarNoon.getTime();
-    /* Collect hourly data for the full 24h cycle (-12h to +12h from solar noon) */
+    var nowMs=now.getTime();
+    /* Collect hourly data for the NEXT 24 HOURS from now.
+       hoursFromNoon is relative to solar noon so the gradient maps
+       correctly to the clock position (solar noon = top). */
     for(var i=0;i<hourlyData.time.length;i++){
       var hT=new Date(hourlyData.time[i]).getTime();
-      var hfn=(hT-solarNoonT)/3600000;
-      if(hfn>=-12&&hfn<=12){
+      /* Only include hours from now forward, up to 24h ahead */
+      if(hT>=nowMs-3600000&&hT<=nowMs+24*3600000){
+        var hfn=(hT-solarNoonT)/3600000;
         var temp=hourlyData.temperature_2m[i];
         if(temp!=null){
           tempPoints.push({hoursFromNoon:hfn,temp:temp});
