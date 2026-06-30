@@ -604,7 +604,7 @@ body.capturing .mom-mode-toggle{display:none}
 
 /* Sky chart (curved sun/moon path graph) */
 .sky-chart-wrap{margin-top:6px;padding:12px;background:rgba(0,0,0,.2);border-radius:var(--rs);border:1px solid var(--bdr)}
-.sky-chart{width:100%;height:auto;display:block;max-height:200px}
+.sky-chart{width:100%;height:auto;display:block;max-height:260px}
 .sky-chart-legend{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
 .sky-leg-item{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--t2);font-weight:600}
 .sky-leg-dot{width:10px;height:3px;border-radius:2px}
@@ -3006,7 +3006,8 @@ function calcSunPosition(lat,lon,date){
 /* Format a Date object as HH:MM in the configured timezone. */
 function fmtSunTime(date){
   if(!date||isNaN(date.getTime()))return '--:--';
-  return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'2-digit',minute:'2-digit',hour12:false});
+  /* 12-hour format with AM/PM (e.g. "6:09 AM", "9:19 PM") */
+  return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'numeric',minute:'2-digit',hour12:true});
 }
 
 /* ── Moon calculations ──────────────────────────────────────────────────────
@@ -3234,29 +3235,41 @@ function moonPhaseIcon(phase){
 }
 
 /* Build the curved sky chart SVG showing sun and moon paths.
-   The chart is a semicircular arc representing the sky from horizon to
-   zenith. The sun's path is a yellow curve, the moon's path is a purple
-   curve, and current positions are shown as glowing dots. */
+   The chart shows both above-horizon (sky) and below-horizon
+   (underground) areas so the user can always see where the sun and
+   moon are, even when they're below the horizon. */
 function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
-  var W=340,H=180;  /* SVG dimensions */
+  var W=340,H=210;  /* SVG dimensions (taller to fit below-horizon area) */
   var cx=W/2;       /* center X */
-  var horizonY=150; /* Y position of horizon line */
-  var arcR=120;     /* radius of the sky arc */
+  var horizonY=130; /* Y position of horizon line */
+  var arcR=110;     /* radius of the sky arc */
   var arcTopY=horizonY-arcR;  /* Y of the top of the arc (zenith) */
+  var belowHorizonH=60;  /* height of below-horizon area */
+  var bottomY=horizonY+belowHorizonH;  /* Y of chart bottom */
 
-  /* Helper: convert elevation (degrees) + time-of-day to X,Y on the chart.
-     X is determined by the azimuth (east=left, west=right).
-     Y is determined by the elevation (0°=horizon, 90°=zenith). */
+  /* Helper: convert elevation (degrees) + azimuth to X,Y on the chart.
+     Above horizon: Y goes from horizonY (0°) to arcTopY (90°).
+     Below horizon: Y goes from horizonY (0°) to bottomY (-90°).
+     X is determined by the azimuth (east=left, west=right). */
   function elevAzToXY(elev,az){
-    /* Clamp elevation to [-90, 90] */
     elev=Math.max(-90,Math.min(90,elev));
-    /* Y: 0° at horizon (horizonY), 90° at zenith (arcTopY).
-       Below horizon: continue below the line but clamp. */
-    var yFrac=1-(elev/90);  /* 0=zenith(top), 1=horizon(bottom), 2=-90(bottom) */
-    var y=arcTopY+(horizonY-arcTopY)*yFrac;
-    if(elev<0)y=horizonY+Math.min(20,Math.abs(elev)*0.3);
+    var y;
+    if(elev>=0){
+      /* Above horizon: scale 0°→90° to horizonY→arcTopY */
+      var yFrac=1-(elev/90);
+      y=arcTopY+(horizonY-arcTopY)*yFrac;
+    }else{
+      /* Below horizon: scale 0°→-90° to horizonY→bottomY.
+         Use a gentler scale so below-horizon positions are visible
+         but compressed. Clamp at bottomY. */
+      var belowFrac=Math.abs(elev)/90;
+      /* Non-linear: compress so -90° is at bottomY but -30° is still
+         close to the horizon (most below-horizon action is 0 to -30°) */
+      belowFrac=Math.pow(belowFrac,0.6);
+      y=horizonY+(bottomY-horizonY)*belowFrac;
+    }
     /* X: based on azimuth. 90°=East(left), 180°=South(center), 270°=West(right).
-       Map 60°-300° to the chart width. */
+       Map 60°-300° to the chart width so extreme north positions still show. */
     var azFrac;
     if(az<90)azFrac=0;
     else if(az>270)azFrac=1;
@@ -3265,49 +3278,52 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     return {x:x,y:y};
   }
 
-  /* Build the sun's daily path as a curve. Sample elevation/azimuth
-     from sunrise to sunset in 24 steps. */
+  /* Build the sun's path. Sample from sunrise-2h to sunset+2h so the
+     curve dips below the horizon at both ends. */
   var sunPath='';
-  var sunPts=[];
   if(times.sunrise&&times.sunset){
     var srT=times.sunrise.getTime(),ssT=times.sunset.getTime();
-    for(var i=0;i<=24;i++){
-      var t=srT+(ssT-srT)*i/24;
+    var startT=srT-3*3600000,endT=ssT+3*3600000;
+    for(var i=0;i<=36;i++){
+      var t=startT+(endT-startT)*i/36;
       var p=calcSunPosition(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
       var xy=elevAzToXY(p.elevation,p.azimuth);
-      sunPts.push(xy);
       sunPath+=(i===0?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
     }
   }
-  /* Build the moon's daily path. The moon is visible at different times
-     than the sun, so we sample over 24 hours centered on now. */
+  /* Build the moon's path over 24 hours centered on now. Always draw
+     the full path (including below-horizon portions) so the user can
+     see where the moon is relative to the horizon. */
   var moonPath='';
-  var moonPts=[];
+  var moonStarted=false;
   var nowT=now.getTime();
-  for(var i=0;i<=24;i++){
-    var t=nowT-12*3600000+i*3600000;  /* -12h to +12h */
+  for(var i=0;i<=48;i++){
+    var t=nowT-24*3600000+i*3600000;  /* -24h to +24h */
     var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
-    if(p.elevation>=-5){  /* only draw when near or above horizon */
-      var xy=elevAzToXY(p.elevation,p.azimuth);
-      moonPts.push(xy);
-      moonPath+=(moonPts.length===1?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
-    }
+    var xy=elevAzToXY(p.elevation,p.azimuth);
+    moonPath+=(moonStarted?' L':'M')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
+    moonStarted=true;
   }
 
-  /* Current sun and moon positions */
+  /* Current sun and moon positions (always rendered, even below horizon) */
   var sunXY=elevAzToXY(pos.elevation,pos.azimuth);
   var moonXY=elevAzToXY(moonPos.elevation,moonPos.azimuth);
+  var sunBelow=pos.elevation<0;
+  var moonBelow=moonPos.elevation<0;
 
   /* Build the SVG */
   var svg='<div class="sky-chart-wrap">'+
     '<svg class="sky-chart" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
-    /* Sky gradient background */
+    /* Gradients */
     '<defs>'+
       '<linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">'+
         '<stop offset="0%" stop-color="#1e1b4b"/>'+
         '<stop offset="50%" stop-color="#312e81"/>'+
-        '<stop offset="90%" stop-color="#7c3aed"/>'+
-        '<stop offset="100%" stop-color="#1e1b4b"/>'+
+        '<stop offset="100%" stop-color="#7c3aed"/>'+
+      '</linearGradient>'+
+      '<linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#0a0a12"/>'+
+        '<stop offset="100%" stop-color="#000000"/>'+
       '</linearGradient>'+
       '<radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">'+
         '<stop offset="0%" stop-color="#fde047"/>'+
@@ -3320,37 +3336,42 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
         '<stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>'+
       '</radialGradient>'+
     '</defs>'+
-    /* Sky background (semicircle) */
+    /* Sky background (semicircle above horizon) */
     '<path d="M 20,'+horizonY+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+horizonY+' Z" fill="url(#skyGrad)" opacity="0.3"/>'+
+    /* Ground background (below horizon) */
+    '<rect x="0" y="'+horizonY+'" width="'+W+'" height="'+belowHorizonH+'" fill="url(#groundGrad)" opacity="0.5"/>'+
     /* Horizon line */
     '<line x1="10" y1="'+horizonY+'" x2="'+(W-10)+'" y2="'+horizonY+'" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="3,2"/>'+
     '<text x="12" y="'+(horizonY-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
-    /* Elevation grid lines (30°, 60°) */
+    /* Elevation grid lines (30°, 60°) - arcs above horizon */
     '<path d="M 20,'+elevAzToXY(30,180).y+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+elevAzToXY(30,180).y+'" fill="none" stroke="rgba(139,92,246,.1)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
     '<path d="M 20,'+elevAzToXY(60,180).y+' A '+(W/2-20)+','+arcR+' 0 0,1 '+(W-20)+','+elevAzToXY(60,180).y+'" fill="none" stroke="rgba(139,92,246,.1)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
     '<text x="'+(cx+2)+'" y="'+(elevAzToXY(30,180).y-2)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">30°</text>'+
     '<text x="'+(cx+2)+'" y="'+(elevAzToXY(60,180).y-2)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">60°</text>'+
+    /* Below-horizon depth markers (-30°) */
+    '<line x1="10" y1="'+elevAzToXY(-30,180).y+'" x2="'+(W-10)+'" y2="'+elevAzToXY(-30,180).y+'" stroke="rgba(92,92,110,.15)" stroke-width="0.5" stroke-dasharray="2,3"/>'+
+    '<text x="'+(cx+2)+'" y="'+(elevAzToXY(-30,180).y-2)+'" font-size="6" fill="#5c5c6e" font-family="JetBrains Mono,monospace">-30°</text>'+
     /* Cardinal directions on horizon */
     '<text x="20" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">E</text>'+
     '<text x="'+cx+'" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">S</text>'+
     '<text x="'+(W-20)+'" y="'+(horizonY+11)+'" font-size="7" fill="#9898a8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">W</text>'+
-    /* Moon path (drawn first, behind sun) */
+    /* Moon path (always drawn, includes below-horizon portions as dashed) */
     (moonPath?'<path d="'+moonPath+'" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.5"/>':'')+
-    /* Sun path */
+    /* Sun path (always drawn, includes below-horizon portions) */
     (sunPath?'<path d="'+sunPath+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.6"/>':'')+
-    /* Current moon position */
-    (moonPos.elevation>=-5?
-      '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="10" fill="url(#moonGlow)"/>'+
-      '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="4" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1"/>':'')+
-    /* Current sun position */
-    (pos.elevation>=-5?
-      '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="14" fill="url(#sunGlow)"/>'+
-      '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="6" fill="#fde047" stroke="#fbbf24" stroke-width="1.5"/>':'')+
+    /* Current moon position (always shown - dimmer when below horizon) */
+    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="'+(moonBelow?6:10)+'" fill="url(#moonGlow)" opacity="'+(moonBelow?0.4:1)+'"/>'+
+    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="'+(moonBelow?3:4)+'" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1" opacity="'+(moonBelow?0.6:1)+'"/>'+
+    (moonBelow?'<text x="'+moonXY.x+'" y="'+(moonXY.y+14)+'" font-size="6" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">MOON</text>':'')+
+    /* Current sun position (always shown - dimmer when below horizon) */
+    '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="'+(sunBelow?8:14)+'" fill="url(#sunGlow)" opacity="'+(sunBelow?0.3:1)+'"/>'+
+    '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="'+(sunBelow?4:6)+'" fill="#fde047" stroke="#fbbf24" stroke-width="1.5" opacity="'+(sunBelow?0.5:1)+'"/>'+
+    (sunBelow?'<text x="'+sunXY.x+'" y="'+(sunXY.y+14)+'" font-size="6" fill="#fbbf24" font-family="JetBrains Mono,monospace" text-anchor="middle">SUN</text>':'')+
     '</svg>'+
     /* Legend */
     '<div class="sky-chart-legend">'+
-      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun Path</span>'+
-      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon Path</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
       '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
     '</div>'+
   '</div>';
