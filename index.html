@@ -218,6 +218,7 @@ body.move-counties-mode .loc-tab{padding-right:36px}  /* make room for the arrow
 .act-btn:active{transform:scale(.92)}
 .act-btn.copied{background:var(--suc-g);border-color:var(--suc);color:var(--suc)}
 .act-btn.flash{background:var(--acc);color:#fff;animation:flashBtn .4s}
+.act-btn.spin i{animation:sp .8s linear infinite}
 @keyframes flashBtn{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
 .act-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--suc);color:var(--suc);padding:8px 16px;border-radius:var(--rs);font-size:11px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.5);display:flex;align-items:center;gap:6px;animation:toastIn .3s ease-out;pointer-events:none}
 .act-toast.error{border-color:var(--dng);color:var(--dng)}
@@ -1604,8 +1605,15 @@ function buildPanelHtml(p){
   var cls=['c',p.gridClass];
   if(p.extraClass)cls.push(p.extraClass);
   if(p.collapsible)cls.push('collapsible');
-  /* Action buttons - always add a screenshot button, plus any panel-specific actions */
+  /* Action buttons - add a refresh button (if the panel has a refreshFn),
+     always add a screenshot button, plus any panel-specific actions */
   var actions=(p.actions||[]).slice();
+  /* Per-panel refresh button - lets the user reload just this panel
+     without triggering a full refreshAll(). Saves API calls and
+     bandwidth. Only shown on panels that have a refreshFn. */
+  if(p.refreshFn){
+    actions.unshift({type:'refresh',label:'Refresh this panel',icon:'fa-arrows-rotate'});
+  }
   actions.push({type:'screenshot',label:'Export Screenshot',icon:'fa-camera'});
   var actionsHtml='<div class="ch-actions">'+actions.map(function(a){
     return '<button class="act-btn" data-act="'+a.type+'" data-target="'+(a.target||'')+'" data-panel="'+p.id+'" title="'+a.label+'" aria-label="'+a.label+'"><i class="fas '+a.icon+'"></i></button>';
@@ -1668,6 +1676,12 @@ function switchTab(tabId){
        them" -> dot disappears until the next new alert arrives. */
     markAllCurrentAlertsSeen();
   }
+  /* Auto-refresh the newly-switched-to tab's panels if they haven't been
+     loaded yet or are stale (>10 min old). This ensures panels are fully
+     loaded when the user switches to a tab, without doing a full refreshAll()
+     that would also reload Current Conditions panels (which are kept live
+     in the background for alert monitoring). */
+  refreshTabPanels(tabId,true);
 }
 
 /* On page load, restore the saved active tab from localStorage (default: current) */
@@ -1688,6 +1702,50 @@ function loadSavedTab(){
   var locTabs=document.getElementById('locTabs');
   var showLocTabs=(activeTab==='current'||activeTab==='nws');
   if(locTabs)locTabs.style.display=showLocTabs?'':'none';
+}
+
+/* Track when each tab's panels were last refreshed, so we can skip
+   re-fetching if the data is still fresh. Keyed by tab id.
+   'current' is always considered fresh (it's kept live in the background). */
+var tabLastRefreshed={};
+var TAB_STALE_MS=10*60*1000;  /* 10 minutes */
+
+/* Refresh all panels on a given tab. If onlyIfStale=true, only refreshes
+   if the tab's data is older than TAB_STALE_MS (or never loaded).
+   This is called on tab switch so panels are ready when the user arrives,
+   without doing a full refreshAll() that would also reload Current
+   Conditions panels. */
+function refreshTabPanels(tabId,onlyIfStale){
+  if(TABS.indexOf(tabId)===-1)return;
+  /* Current Conditions is always kept live by the background auto-refresh,
+     so skip it here to avoid duplicate fetches. */
+  if(tabId==='current')return;
+  /* If onlyIfStale and the tab was refreshed recently, skip */
+  if(onlyIfStale&&tabLastRefreshed[tabId]){
+    var age=Date.now()-tabLastRefreshed[tabId];
+    if(age<TAB_STALE_MS)return;
+  }
+  /* Define which functions to call for each tab (same as refreshAll) */
+  var tabAsyncFns={
+    nws:['fAFD','fRSS','fNWSNational','fDWML','fLocalObs','fGridpoint','fHeadlines'],
+    spc:['fSPCRss'],
+    spotting:['fAllAv','fStormEnv','fLSR','fNowcast']
+  };
+  var tabSyncFns={
+    nws:['rRadar','rMeteo'],
+    spc:['rSPCImgs','rHazards'],
+    spotting:['rSfcMap','rLightning','rSkewT']
+  };
+  var asyncFns=tabAsyncFns[tabId]||[];
+  var syncFns=tabSyncFns[tabId]||[];
+  /* Mark as refreshing now so a rapid tab switch doesn't trigger duplicates */
+  tabLastRefreshed[tabId]=Date.now();
+  Promise.all(asyncFns.map(function(name){
+    try{return window[name]()}catch(e){console.error(name+' error:',e)}
+  })).then(function(){
+    syncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
+    tabLastRefreshed[tabId]=Date.now();
+  });
 }
 
 /* ── Storm Spotter Mode ──────────────────────────────────────────────────────
@@ -1937,8 +1995,47 @@ function bindPanelActions(){
       var act=btn.dataset.act,target=btn.dataset.target,panelId=btn.dataset.panel;
       if(act==='copy')copyText(target,btn);
       else if(act==='screenshot')screenshotPanel(panelId,btn);
+      else if(act==='refresh')refreshPanel(panelId,btn);
     });
   });
+}
+
+/* Refresh a single panel by calling its refreshFn. This avoids a full
+   refreshAll() which would reload every panel on the active tab (and
+   all Current Conditions panels). The button spins while the refresh
+   is in progress. */
+function refreshPanel(panelId,btn){
+  var pdef=PANELS.find(function(p){return p.id===panelId});
+  if(!pdef||!pdef.refreshFn){showToast('This panel cannot be refreshed',true);return}
+  if(typeof window[pdef.refreshFn]!=='function'){showToast('Refresh function not available',true);return}
+  /* Spin the button while refreshing */
+  if(btn)btn.classList.add('spin');
+  /* Reset the panel's update timestamp to 'Refreshing...' */
+  if(pdef.updateId){
+    var updEl=document.getElementById(pdef.updateId);
+    if(updEl){updEl.textContent='Refreshing...';updEl.style.color='var(--wrn)'}
+  }
+  try{
+    var result=window[pdef.refreshFn]();
+    /* Handle both async (Promise) and sync functions */
+    if(result&&typeof result.then==='function'){
+      result.then(function(){
+        if(btn)btn.classList.remove('spin');
+        if(pdef.updateId){var el=document.getElementById(pdef.updateId);if(el)el.style.color=''}
+      }).catch(function(){
+        if(btn)btn.classList.remove('spin');
+        if(pdef.updateId){var el=document.getElementById(pdef.updateId);if(el)el.style.color=''}
+      });
+    }else{
+      if(btn)btn.classList.remove('spin');
+      if(pdef.updateId){var el=document.getElementById(pdef.updateId);if(el)el.style.color=''}
+    }
+  }catch(e){
+    console.error('Panel refresh error ('+panelId+'):',e);
+    if(btn)btn.classList.remove('spin');
+    if(pdef.updateId){var el=document.getElementById(pdef.updateId);if(el)el.style.color=''}
+    showToast('Refresh failed: '+(e.message||e),true);
+  }
 }
 
 /* ── Settings menu (gear icon dropdown) ────────────────────────────────────── */
@@ -6525,8 +6622,17 @@ function countUnseenAlerts(){
 }
 function updateTabAlertDot(){
   var unseen=countUnseenAlerts();
+  /* Only show the red glowing alert dot on the Current Conditions tab.
+     The alert BANNER (at the top of the page) shows on all tabs, but
+     the per-tab dot is reserved for Current Conditions since that's
+     where the user goes to see alert details. Other tabs don't need
+     a dot because the banner already alerts the user across all tabs. */
   document.querySelectorAll('.tab-btn').forEach(function(btn){
-    btn.classList.toggle('has-alert',unseen>0);
+    if(btn.dataset.tab==='current'){
+      btn.classList.toggle('has-alert',unseen>0);
+    }else{
+      btn.classList.remove('has-alert');
+    }
   });
 }
 
@@ -7951,6 +8057,9 @@ async function refreshAll(){
     var syncFns=tabSyncFns[activeTab]||[];
     await Promise.all(asyncFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
     syncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
+    /* Mark the active tab as refreshed so the tab-switch auto-refresh
+       doesn't immediately re-fetch the same data. */
+    tabLastRefreshed[activeTab]=Date.now();
     mkUp('obs');
   }catch(e){console.error('Refresh error:',e)}
   refreshing=false;
