@@ -1509,7 +1509,12 @@ function waitForImgLoad(img){
    5. Return the composite canvas.
    The caller replaces the map container's content with this canvas for
    the html2canvas capture, then restores the original content afterward. */
-function snapshotLeafletMap(map){
+/* Snapshot a Leaflet map onto a single composite <canvas>. This bypasses
+   all html2canvas + Leaflet issues (CORS taint, transform desync, blank
+   tiles) by drawing the map ourselves. Tiles are fetched as data URLs
+   first to guarantee the canvas is not tainted. Returns a Promise that
+   resolves to the canvas (or null on failure). */
+async function snapshotLeafletMap(map){
   try{
     var container=map.getContainer();
     var w=container.offsetWidth;
@@ -1524,12 +1529,13 @@ function snapshotLeafletMap(map){
     ctx.fillStyle='#0a0a12';
     ctx.fillRect(0,0,w,h);
 
-    /* Draw all tile images. Leaflet positions tiles using CSS transform:
-       translate3d(x,y,0) on each tile <img>. We parse that transform to
-       get the tile's pixel position and draw the img there. */
+    /* Draw all tile images. To avoid canvas tainting, we fetch each tile
+       URL as a blob and convert to a data URL, then draw the data URL
+       image. This guarantees the canvas can be exported via toDataURL(). */
     var tilePane=container.querySelector('.leaflet-tile-pane');
     if(tilePane){
       var tiles=tilePane.querySelectorAll('img.leaflet-tile');
+      var tilePromises=[];
       tiles.forEach(function(tile){
         if(!tile.complete||tile.naturalWidth===0)return;
         /* Parse the transform: translate3d(Xpx, Ypx, 0) */
@@ -1537,13 +1543,38 @@ function snapshotLeafletMap(map){
         var m=transform.match(/translate3d\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/);
         var x=0,y=0;
         if(m){x=parseFloat(m[1])||0;y=parseFloat(m[2])||0}
-        /* Some tiles use left/top instead of transform */
         if(!m){
           if(tile.style.left)x=parseFloat(tile.style.left)||0;
           if(tile.style.top)y=parseFloat(tile.style.top)||0;
         }
-        try{ctx.drawImage(tile,x,y)}catch(e){/* skip tainted/broken tile */}
+        var tileUrl=tile.src;
+        var px=x,py=y;
+        /* Fetch the tile as a data URL to avoid tainting */
+        tilePromises.push(
+          fetch(tileUrl,{mode:'cors'})
+            .then(function(r){return r.blob()})
+            .then(function(blob){
+              return new Promise(function(resolve){
+                var reader=new FileReader();
+                reader.onloadend=function(){
+                  if(typeof reader.result==='string'&&reader.result.startsWith('data:')){
+                    var img=new Image();
+                    img.onload=function(){try{ctx.drawImage(img,px,py)}catch(e){}resolve()};
+                    img.onerror=function(){resolve()};
+                    img.src=reader.result;
+                  }else{resolve()}
+                };
+                reader.onerror=function(){resolve()};
+                reader.readAsDataURL(blob);
+              });
+            })
+            .catch(function(){
+              /* Fallback: try drawing the original tile (may taint but worth trying) */
+              try{ctx.drawImage(tile,px,py)}catch(e){}
+            })
+        );
       });
+      await Promise.all(tilePromises);
     }
 
     /* Draw the vector overlay canvas (polygons, lines, markers rendered
@@ -1556,8 +1587,7 @@ function snapshotLeafletMap(map){
       }
     }
 
-    /* Draw marker icons (popups, markers using SVG/DIV) - these are in
-       the marker pane as <img> elements positioned via transform. */
+    /* Draw marker icons (popups, markers using SVG/DIV) */
     var markerPane=container.querySelector('.leaflet-marker-pane');
     if(markerPane){
       var markerImgs=markerPane.querySelectorAll('img');
@@ -1567,7 +1597,6 @@ function snapshotLeafletMap(map){
         var m=transform.match(/translate3d\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/);
         var x=0,y=0;
         if(m){x=parseFloat(m[1])||0;y=parseFloat(m[2])||0}
-        /* Center the icon (Leaflet uses margin-left:-50% on marker icons) */
         var iw=mi.offsetWidth||mi.naturalWidth;
         var ih=mi.offsetHeight||mi.naturalHeight;
         try{ctx.drawImage(mi,x-iw/2,y-ih)}catch(e){/* skip */}
@@ -2711,11 +2740,12 @@ function screenshotPanel(panelId,btn){
         function finish(){
           if(done)return;
           done=true;
-          setTimeout(function(){
+          setTimeout(async function(){
             try{
               var mapContainer=alertMapInstance.getContainer();
-              /* Snapshot the map onto a composite canvas */
-              var snap=snapshotLeafletMap(alertMapInstance);
+              /* Snapshot the map onto a composite canvas (async - fetches
+                 tiles as data URLs to avoid canvas tainting) */
+              var snap=await snapshotLeafletMap(alertMapInstance);
               if(snap){
                 /* Replace the map container's children with the snapshot
                    canvas. We hide the original Leaflet panes (don't remove
@@ -6597,7 +6627,8 @@ function initAlertMap(){
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',{
     maxZoom:18,
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains:'abcd'
+    subdomains:'abcd',
+    crossOrigin:true  /* Required so tiles can be drawn to canvas without tainting */
   }).addTo(alertMapInstance);
 
   /* Build the legend container - the body is populated dynamically by
