@@ -3255,6 +3255,38 @@ function moonPhaseIcon(phase){
   }
 }
 
+/* Map a temperature fraction (0=coldest, 1=hottest) to a heat color.
+   Returns an RGB hex string. The gradient goes:
+     0.0 = deep blue (coldest)
+     0.25 = light blue
+     0.5 = green/yellow
+     0.75 = orange
+     1.0 = deep red (hottest) */
+function tempToColor(frac){
+  frac=Math.max(0,Math.min(1,frac));
+  /* Color stops: blue → cyan → green → yellow → orange → red */
+  var stops=[
+    {f:0.0, r:30,  g:64,  b:175},   /* #1e40af deep blue */
+    {f:0.2, r:56,  g:189, b:248},   /* #38bdf8 light blue */
+    {f:0.4, r:34,  g:197, b:94},    /* #22c55e green */
+    {f:0.6, r:251, g:191, b:36},    /* #fbbf24 yellow */
+    {f:0.8, r:249, g:115, b:22},    /* #f97316 orange */
+    {f:1.0, r:220, g:38,  b:38}     /* #dc2626 red */
+  ];
+  /* Find the two stops to interpolate between */
+  for(var i=0;i<stops.length-1;i++){
+    if(frac>=stops[i].f&&frac<=stops[i+1].f){
+      var range=stops[i+1].f-stops[i].f||1;
+      var t=(frac-stops[i].f)/range;
+      var r=Math.round(stops[i].r+(stops[i+1].r-stops[i].r)*t);
+      var g=Math.round(stops[i].g+(stops[i+1].g-stops[i].g)*t);
+      var b=Math.round(stops[i].b+(stops[i+1].b-stops[i].b)*t);
+      return 'rgb('+r+','+g+','+b+')';
+    }
+  }
+  return 'rgb(220,38,38)';
+}
+
 /* Build the clock-style sky chart SVG showing sun and moon positions.
    This is a pure 2D time clock - no compass, no elevation radius.
    - 12:00 (top) = solar noon / peak (highest elevation)
@@ -3329,40 +3361,76 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
   var moonBelow=moonPos.elevation<0;
 
   /* Build temperature overlay from hourly data.
-     Filter to today's hours (sunrise to sunset +/- 2h), find min/max
-     temp, and create a smooth curve path. Also identify the thermal
-     peak (hottest hour) for the highlight band. */
-  var tempPath='';
+     We use the hourly forecast to determine temperature at each clock
+     position, then create a heat gradient that colors the sun's path
+     circle from red (hot, near solar noon) to blue (cold, near solar
+     midnight). This makes the sun's travel path itself show the heat
+     gradient throughout the day. */
   var tempPoints=[];
-  var popPath='';
   var thermalPeakHour=null;
   var thermalPeakTemp=-999;
+  var thermalMinHour=null;
+  var thermalMinTemp=999;
   var tempMin=999,tempMax=-999;
   if(hourlyData&&times.solarNoon&&hourlyData.time&&hourlyData.temperature_2m){
     var solarNoonT=times.solarNoon.getTime();
-    /* Collect today's hourly data: from -6h to +6h from solar noon */
+    /* Collect hourly data for the full 24h cycle (-12h to +12h from solar noon) */
     for(var i=0;i<hourlyData.time.length;i++){
       var hT=new Date(hourlyData.time[i]).getTime();
       var hfn=(hT-solarNoonT)/3600000;
-      if(hfn>=-6&&hfn<=6){
+      if(hfn>=-12&&hfn<=12){
         var temp=hourlyData.temperature_2m[i];
         if(temp!=null){
-          tempPoints.push({hoursFromNoon:hfn,temp:temp,pop:hourlyData.precipitation_probability?hourlyData.precipitation_probability[i]:0});
+          tempPoints.push({hoursFromNoon:hfn,temp:temp});
           if(temp<tempMin)tempMin=temp;
           if(temp>tempMax){
             tempMax=temp;
             thermalPeakHour=hfn;
             thermalPeakTemp=temp;
           }
+          if(temp<thermalMinTemp){
+            thermalMinTemp=temp;
+            thermalMinHour=hfn;
+          }
         }
       }
     }
-    /* Build the temperature curve path */
-    if(tempPoints.length>1){
-      for(var i=0;i<tempPoints.length;i++){
-        var xy=timeTempToXY(tempPoints[i].hoursFromNoon,tempPoints[i].temp,tempMin,tempMax);
-        tempPath+=(i===0?'M':' L')+xy.x.toFixed(1)+','+xy.y.toFixed(1);
-      }
+  }
+
+  /* Build a heat gradient for the sun path circle.
+     The gradient maps clock position (angle) to temperature color:
+     - Top (solar noon, 0h) = red (hottest)
+     - Right (sunset, +6h) = orange/yellow
+     - Bottom (solar midnight, ±12h) = blue (coldest)
+     - Left (sunrise, -6h) = orange/yellow
+     We use a conic-like gradient via multiple line segments around the
+     circle, each colored by the temperature at that hour. */
+  var heatSegments='';
+  var tempColorStops='';
+  if(tempPoints.length>1){
+    /* Sort by hoursFromNoon so we go in clock order */
+    tempPoints.sort(function(a,b){return a.hoursFromNoon-b.hoursFromNoon});
+    /* Build SVG path segments around the circle, each colored by temp */
+    var segs=tempPoints.length;
+    for(var i=0;i<segs;i++){
+      var tp=tempPoints[i];
+      var tpNext=tempPoints[(i+1)%segs];
+      /* Map temperature to color: hot=red, cool=blue */
+      var tempRange=tempMax-tempMin||1;
+      var frac=(tp.temp-tempMin)/tempRange;  /* 0=cool, 1=hot */
+      var color=tempToColor(frac);
+      /* Calculate arc segment from this hour to next */
+      var angle1=(tp.hoursFromNoon*15-90)*Math.PI/180;
+      var angle2=(tpNext.hoursFromNoon*15-90)*Math.PI/180;
+      var x1=cx+clockR*Math.cos(angle1);
+      var y1=cy+clockR*Math.sin(angle1);
+      var x2=cx+clockR*Math.cos(angle2);
+      var y2=cy+clockR*Math.sin(angle2);
+      /* Large arc flag: 1 if segment > 180°, 0 otherwise */
+      var angleDiff=Math.abs(angle2-angle1);
+      var largeArc=angleDiff>Math.PI?1:0;
+      /* Draw a thick arc segment in the temperature color */
+      heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.85" stroke-linecap="round"/>';
     }
   }
 
@@ -3408,21 +3476,20 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     '<text x="'+cx+'" y="'+(H-5)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Lowest point</text>'+
     '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
     '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="end">East horizon</text>'+
-    /* Temperature curve overlay (purple line inside the clock) */
-    (tempPath?'<path d="'+tempPath+'" fill="none" stroke="#a855f6" stroke-width="2.5" opacity="0.8" stroke-linecap="round" stroke-linejoin="round"/>':'')+
-    /* Temperature data points (small dots at each hour) */
-    (tempPoints.length>0?tempPoints.map(function(tp){
-      var xy=timeTempToXY(tp.hoursFromNoon,tp.temp,tempMin,tempMax);
-      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="2" fill="#a855f6" opacity="0.6"/>';
-    }).join(''):'')+
-    /* Thermal peak marker (orange dot at hottest hour) */
+    /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
+    heatSegments+
+    /* Thermal peak marker (hottest hour) with temperature label */
     (thermalPeakHour!==null?(function(){
-      var xy=timeTempToXY(thermalPeakHour,thermalPeakTemp,tempMin,tempMax);
-      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="5" fill="#ef4444" stroke="#fca5a5" stroke-width="1.5" opacity="0.9"/>'+
-        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-10).toFixed(1)+'" font-size="7" fill="#ef4444" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>';
+      var xy=timeToClockXY(thermalPeakHour);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#dc2626" stroke="#fca5a5" stroke-width="2" opacity="0.95"/>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-12).toFixed(1)+'" font-size="8" fill="#fca5a5" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>';
     })():'')+
-    /* Sun path (perfect circle - the clock face) */
-    sunPathCircle+
+    /* Thermal min marker (coldest hour) with temperature label */
+    (thermalMinHour!==null?(function(){
+      var xy=timeToClockXY(thermalMinHour);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#1e40af" stroke="#93c5fd" stroke-width="2" opacity="0.95"/>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+18).toFixed(1)+'" font-size="8" fill="#93c5fd" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalMinTemp)+'°</text>';
+    })():'')+
     /* Moon path (perfect circle, slightly inside) */
     moonPathCircle+
     /* Current moon position */
@@ -3436,8 +3503,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     '<div class="sky-chart-legend">'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
-      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#a855f6"></span>Temp</span>'+
-      (thermalPeakHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#ef4444"></span>Peak '+Math.round(thermalPeakTemp)+'°</span>':'')+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
+      (thermalPeakHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'°</span>':'')+
+      (thermalMinHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'°</span>':'')+
       '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
     '</div>'+
   '</div>';
