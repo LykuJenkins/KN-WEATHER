@@ -3031,6 +3031,29 @@ function fmtSunTime(date){
   return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'numeric',minute:'2-digit',hour12:true});
 }
 
+/* Format the time until a target date as a countdown string.
+   Returns things like "in 2h 15m", "in 45m", "passed 3h ago",
+   or "now" if within 1 minute. Uses the 'now' timestamp passed in. */
+function fmtTimeUntil(target,now){
+  if(!target||isNaN(target.getTime()))return '';
+  var diffMs=target.getTime()-now.getTime();
+  var absDiff=Math.abs(diffMs);
+  var minutes=Math.floor(absDiff/60000);
+  var hours=Math.floor(minutes/60);
+  var mins=minutes%60;
+  var days=Math.floor(hours/24);
+  var sign=diffMs>0?'in ':'';
+  var suffix=diffMs<0?' ago':'';
+  if(absDiff<60000)return 'now';
+  if(days>0){
+    return sign+days+'d '+(hours%24)+'h'+suffix;
+  }
+  if(hours>0){
+    return sign+hours+'h'+(mins>0?' '+mins+'m':'')+suffix;
+  }
+  return sign+mins+'m'+suffix;
+}
+
 /* ── Moon calculations ──────────────────────────────────────────────────────
    Moon phase and position calculations using Jean Meeus' algorithms.
    No API needed - all math is done in-browser. */
@@ -3158,6 +3181,7 @@ function fSun(){
         '<div class="sun-card-body">'+
           '<div class="sun-card-label">Sunrise</div>'+
           '<div class="sun-card-val">'+fmtSunTime(times.sunrise)+'</div>'+
+          '<div class="sun-card-sub">'+fmtTimeUntil(times.sunrise,now)+'</div>'+
         '</div>'+
       '</div>'+
       '<div class="sun-card sun-primary">'+
@@ -3165,24 +3189,28 @@ function fSun(){
         '<div class="sun-card-body">'+
           '<div class="sun-card-label">Sunset</div>'+
           '<div class="sun-card-val">'+fmtSunTime(times.sunset)+'</div>'+
+          '<div class="sun-card-sub">'+fmtTimeUntil(times.sunset,now)+'</div>'+
         '</div>'+
       '</div>'+
       '<div class="sun-card">'+
         '<div class="sun-card-body">'+
           '<div class="sun-card-label">Solar Noon</div>'+
           '<div class="sun-card-val">'+fmtSunTime(times.solarNoon)+'</div>'+
+          '<div class="sun-card-sub">'+fmtTimeUntil(times.solarNoon,now)+'</div>'+
         '</div>'+
       '</div>'+
       '<div class="sun-card">'+
         '<div class="sun-card-body">'+
           '<div class="sun-card-label">Civil Dawn</div>'+
           '<div class="sun-card-val">'+fmtSunTime(times.dawn)+'</div>'+
+          '<div class="sun-card-sub">'+fmtTimeUntil(times.dawn,now)+'</div>'+
         '</div>'+
       '</div>'+
       '<div class="sun-card">'+
         '<div class="sun-card-body">'+
           '<div class="sun-card-label">Civil Dusk</div>'+
           '<div class="sun-card-val">'+fmtSunTime(times.dusk)+'</div>'+
+          '<div class="sun-card-sub">'+fmtTimeUntil(times.dusk,now)+'</div>'+
         '</div>'+
       '</div>'+
       '<div class="sun-card sun-elev">'+
