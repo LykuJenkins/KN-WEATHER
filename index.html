@@ -3562,6 +3562,65 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     })():'')+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
+    /* Daylight ribbon - a thin band just inside the heat gradient that
+       shows daylight vs night. Bright golden during daylight hours
+       (dawn to dusk), dark blue during night. Smooth transitions at
+       dawn and dusk. A white dot marks the current time position so
+       the user can see how much daylight is remaining. */
+    (function(){
+      if(!times.dawn||!times.dusk||!times.solarNoon)return '';
+      var dawnHfn=(times.dawn.getTime()-times.solarNoon.getTime())/3600000;
+      var duskHfn=(times.dusk.getTime()-times.solarNoon.getTime())/3600000;
+      var daylightRibbonR=clockR-14;  /* just inside the heat gradient */
+      var ribbonSegs='';
+      /* Draw 48 arc segments around the full circle (every 30 min of clock time).
+         Each segment is colored based on whether it's daylight or night.
+         - Daylight (dawn to dusk): golden yellow, brightest at solar noon
+         - Night (dusk to dawn): dark blue/black
+         - Transition: smooth gradient at dawn and dusk */
+      for(var i=0;i<48;i++){
+        var hfn1=-12+(i/48)*24;  /* -12h to +12h */
+        var hfn2=-12+((i+1)/48)*24;
+        /* Determine daylight intensity at midpoint of this segment */
+        var midHfn=(hfn1+hfn2)/2;
+        var intensity;
+        if(midHfn>=dawnHfn&&midHfn<=duskHfn){
+          /* Daylight: intensity based on sun elevation (peak at solar noon) */
+          /* Use a sin curve: 0 at dawn/dusk, 1 at solar noon */
+          var dayProgress=(midHfn-dawnHfn)/(duskHfn-dawnHfn);  /* 0 to 1 */
+          intensity=Math.sin(dayProgress*Math.PI);  /* 0→1→0 */
+        }else{
+          intensity=0;  /* night */
+        }
+        /* Color: golden yellow for daylight, dark blue for night */
+        var color;
+        if(intensity>0){
+          /* Blend from dark blue (night) through orange (dawn/dusk) to bright gold (noon) */
+          var r=Math.round(30+intensity*225);   /* 30→255 */
+          var g=Math.round(40+intensity*180);   /* 40→220 */
+          var b=Math.round(80-intensity*80);    /* 80→0 */
+          color='rgb('+r+','+g+','+b+')';
+        }else{
+          color='#0a0a1a';  /* dark night */
+        }
+        /* Calculate arc segment endpoints */
+        var angle1=(hfn1*15-90)*Math.PI/180;
+        var angle2=(hfn2*15-90)*Math.PI/180;
+        var x1=cx+daylightRibbonR*Math.cos(angle1);
+        var y1=cy+daylightRibbonR*Math.sin(angle1);
+        var x2=cx+daylightRibbonR*Math.cos(angle2);
+        var y2=cy+daylightRibbonR*Math.sin(angle2);
+        var largeArc=Math.abs(angle2-angle1)>Math.PI?1:0;
+        ribbonSegs+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="4" opacity="0.8" stroke-linecap="butt"/>';
+      }
+      /* Current time marker on the daylight ribbon */
+      var nowHfn=times.solarNoon?(now.getTime()-times.solarNoon.getTime())/3600000:0;
+      var nowAngle=(nowHfn*15-90)*Math.PI/180;
+      var nowRX=cx+daylightRibbonR*Math.cos(nowAngle);
+      var nowRY=cy+daylightRibbonR*Math.sin(nowAngle);
+      ribbonSegs+='<circle cx="'+nowRX.toFixed(1)+'" cy="'+nowRY.toFixed(1)+'" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" opacity="0.95"/>';
+      return ribbonSegs;
+    })()+
     /* Thermal peak marker (hottest hour) with temperature AND time label */
     (thermalPeakHour!==null?(function(){
       var xy=timeToClockXY(thermalPeakHour);
@@ -3595,6 +3654,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     '<div class="sky-chart-legend">'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#0a0a1a,#f97316,#fde047,#f97316,#0a0a1a)"></span>Daylight</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
       (thermalPeakHour!==null?(function(){
         var peakTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalPeakHour*3600000):null;
