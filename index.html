@@ -3545,6 +3545,21 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     /* Left: SUNRISE with time */
     '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
     '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
+    /* Civil Dawn and Civil Dusk labels at their clock positions.
+       Civil Dawn is before sunrise (lower-left, between sunrise and midnight).
+       Civil Dusk is after sunset (lower-right, between sunset and midnight). */
+    (times.dawn&&times.solarNoon?(function(){
+      var dawnHfn=(times.dawn.getTime()-times.solarNoon.getTime())/3600000;
+      var dawnXY=timeToClockXY(dawnHfn);
+      return '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DAWN</text>'+
+        '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dawn)+'</text>';
+    })():'')+
+    (times.dusk&&times.solarNoon?(function(){
+      var duskHfn=(times.dusk.getTime()-times.solarNoon.getTime())/3600000;
+      var duskXY=timeToClockXY(duskHfn);
+      return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
+        '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
+    })():'')+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
     /* Thermal peak marker (hottest hour) with temperature AND time label */
