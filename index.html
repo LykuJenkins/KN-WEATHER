@@ -3529,28 +3529,43 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
     /* Vertical line (12 to 6) - faint guide */
     '<line x1="'+cx+'" y1="'+(cy-clockR)+'" x2="'+cx+'" y2="'+(cy+clockR)+'" stroke="rgba(92,92,110,.1)" stroke-width="0.5"/>'+
-    /* Solar position labels */
+    /* Solar position labels with actual times */
+    /* Top: SOLAR NOON with time */
     '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
-    '<text x="'+cx+'" y="27" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Highest point</text>'+
+    '<text x="'+cx+'" y="27" font-size="7" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.solarNoon)+'</text>'+
+    /* Right: SUNSET with time */
     '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
-    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="start">West horizon</text>'+
-    '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
-    '<text x="'+cx+'" y="'+(H-5)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="middle">Lowest point</text>'+
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="start">'+fmtSunTime(times.sunset)+'</text>'+
+    /* Bottom: SOLAR MIDNIGHT with time (12h from solar noon) */
+    (function(){
+      var midnight=times.solarNoon?new Date(times.solarNoon.getTime()+12*3600000):null;
+      return '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
+        '<text x="'+cx+'" y="'+(H-5)+'" font-size="7" fill="#818cf8" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(midnight)+'</text>';
+    })()+
+    /* Left: SUNRISE with time */
     '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
-    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="6" fill="#5c5c6e" font-family="Inter,sans-serif" text-anchor="end">East horizon</text>'+
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
-    /* Thermal peak marker (hottest hour) with temperature label */
+    /* Thermal peak marker (hottest hour) with temperature AND time label */
     (thermalPeakHour!==null?(function(){
       var xy=timeToClockXY(thermalPeakHour);
+      /* Calculate the actual time of the thermal peak */
+      var peakTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalPeakHour*3600000):null;
+      var peakTimeStr=peakTime?fmtSunTime(peakTime):'';
       return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#dc2626" stroke="#fca5a5" stroke-width="2" opacity="0.95"/>'+
-        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-12).toFixed(1)+'" font-size="8" fill="#fca5a5" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>';
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-12).toFixed(1)+'" font-size="8" fill="#fca5a5" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-22).toFixed(1)+'" font-size="6" fill="#fca5a5" font-family="JetBrains Mono,monospace" text-anchor="middle">'+peakTimeStr+'</text>';
     })():'')+
-    /* Thermal min marker (coldest hour) with temperature label */
+    /* Thermal min marker (coldest hour) with temperature AND time label */
     (thermalMinHour!==null?(function(){
       var xy=timeToClockXY(thermalMinHour);
+      /* Calculate the actual time of the thermal min */
+      var minTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalMinHour*3600000):null;
+      var minTimeStr=minTime?fmtSunTime(minTime):'';
       return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#1e40af" stroke="#93c5fd" stroke-width="2" opacity="0.95"/>'+
-        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+18).toFixed(1)+'" font-size="8" fill="#93c5fd" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalMinTemp)+'°</text>';
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+18).toFixed(1)+'" font-size="8" fill="#93c5fd" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalMinTemp)+'°</text>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+28).toFixed(1)+'" font-size="6" fill="#93c5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+minTimeStr+'</text>';
     })():'')+
     /* Moon path (perfect circle, slightly inside) */
     moonPathCircle+
@@ -3566,8 +3581,14 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
-      (thermalPeakHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'°</span>':'')+
-      (thermalMinHour!==null?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'°</span>':'')+
+      (thermalPeakHour!==null?(function(){
+        var peakTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalPeakHour*3600000):null;
+        return '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'° '+(peakTime?fmtSunTime(peakTime):'')+'</span>';
+      })():'')+
+      (thermalMinHour!==null?(function(){
+        var minTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalMinHour*3600000):null;
+        return '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'° '+(minTime?fmtSunTime(minTime):'')+'</span>';
+      })():'')+
       '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
     '</div>'+
   '</div>';
