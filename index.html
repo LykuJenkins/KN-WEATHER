@@ -3377,11 +3377,11 @@ function rSkewT(){
    URL format: https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR=YYYY&MONTH=MM&FROM=DDHH&TO=DDHH&STNM=NNNNN
    Soundings are available at 00Z and 12Z. We try the most recent, then fall back. */
 var STORM_ENV_STATIONS=[
-  {stnm:'72632',label:'DTX - White Lake, MI',sub:'SW Michigan'},
-  {stnm:'74455',label:'DVN - Davenport, IA',sub:'Upstream MCS'},
-  {stnm:'74560',label:'ILX - Lincoln, IL',sub:'IL→IN→MI track'},
-  {stnm:'72634',label:'APX - Gaylord, MI',sub:'Northern tier'},
-  {stnm:'72649',label:'MPX - Minneapolis, MN',sub:'MN→WI→MI'}
+  {stnm:'72632',icao:'DTX',label:'DTX - White Lake, MI',sub:'SW Michigan'},
+  {stnm:'74455',icao:'DVN',label:'DVN - Davenport, IA',sub:'Upstream MCS'},
+  {stnm:'74560',icao:'ILX',label:'ILX - Lincoln, IL',sub:'IL→IN→MI track'},
+  {stnm:'72634',icao:'APX',label:'APX - Gaylord, MI',sub:'Northern tier'},
+  {stnm:'72649',icao:'MPX',label:'MPX - Minneapolis, MN',sub:'MN→WI→MI'}
 ];
 var senvActStation=0;
 var senvCache={};
@@ -3435,6 +3435,188 @@ function latestSoundingTime(){
   var mm=('0'+sndMonth).slice(-2);
   var yy=sndYear;
   return {year:yy,month:mm,from:dd+hh,to:dd+hh};
+}
+
+/* Fetch a sounding from the Iowa Environmental Mesonet (IEM) archive as
+   a fallback when the University of Wyoming server is unreachable.
+   IEM provides JSON with raw profile data (pres, hght, tmpc, dwpc, drct,
+   sknt) but NO derived parameters (CAPE, CIN, LI, etc.). We calculate
+   those ourselves from the profile using Bolton's method.
+   URL: https://mesonet.agron.iastate.edu/json/raob.py?station=ICAO&ts=YYYY-MM-DDTHH:00:00Z
+   Returns a parsed sounding object matching parseWyomingSounding() structure,
+   or null on failure. */
+async function fetchIemSounding(icao, candidate){
+  if(!icao||!candidate)return null;
+  /* Build the IEM timestamp from the candidate (YYYY-MM-DDTHH:00:00Z) */
+  var ts=candidate.year+'-'+candidate.month+'-'+candidate.from.slice(0,2)+'T'+candidate.from.slice(2)+':00:00Z';
+  var url='https://mesonet.agron.iastate.edu/json/raob.py?station='+icao+'&ts='+ts;
+  try{
+    var txt=await fP(url);
+    if(!txt||txt.length<50)return null;
+    var data=JSON.parse(txt);
+    if(!data||!data.profiles||!data.profiles[0])return null;
+    var prof=data.profiles[0];
+    if(!prof.profile||prof.profile.length===0)return null;
+    /* Convert IEM profile to the same structure as parseWyomingSounding */
+    var result={
+      station:prof.station||icao,
+      obsTime:prof.valid||'',
+      profile:[],
+      _source:'IEM'
+    };
+    prof.profile.forEach(function(p){
+      if(p.pres==null||p.tmpc==null)return;
+      result.profile.push({
+        pres:p.pres,
+        temp:p.tmpc,
+        dwpt:p.dwpc!=null?p.dwpc:null
+      });
+    });
+    if(result.profile.length===0)return null;
+    /* Calculate derived parameters (CAPE, CIN, LI, PWAT, LCL) from the
+       profile using Bolton's method. */
+    var derived=calcSoundingDerived(result.profile);
+    for(var k in derived)result[k]=derived[k];
+    return result;
+  }catch(e){
+    console.warn('IEM sounding fetch failed for '+icao+':',e);
+    return null;
+  }
+}
+
+/* Calculate derived sounding parameters from a temperature/dewpoint
+   profile using Bolton's method. Returns:
+     cape, cin, liftedIndex, lclTemp, lclPres, pwat
+   The surface parcel is taken from the lowest level with valid temp
+   and dewpoint. CAPE/CIN are computed by lifting the parcel and
+   integrating buoyancy (positive=CAPE, negative=CIN) up to the EL. */
+function calcSoundingDerived(profile){
+  var result={cape:null,cin:null,liftedIndex:null,lclTemp:null,lclPres:null,pwat:null,showalter:null};
+  if(!profile||profile.length<3)return result;
+  /* Find the surface (lowest level with valid temp and dewpoint) */
+  var sfc=null;
+  for(var i=0;i<profile.length;i++){
+    if(profile[i].temp!=null&&profile[i].dwpt!=null&&profile[i].pres>=500){
+      sfc=profile[i];break;
+    }
+  }
+  if(!sfc)return result;
+  var T=sfc.temp;          /* C */
+  var Td=sfc.dwpt;         /* C */
+  var P=sfc.pres;          /* hPa */
+  /* LCL (Lifting Condensation Level) via Bolton (1980) */
+  /* T_LCL = 1/(1/(Td+56)+ln(T/Td)/800) - 56 */
+  var lclT=1/(1/(Td+56)+Math.log((T+273.15)/(Td+273.15))/800)-56;
+  /* P_LCL via Poisson's equation: T_LCL = T * (P_LCL/P)^(R/cp) */
+  /* (T_LCL+273.15)/(T+273.15) = (P_LCL/P)^0.2854 */
+  var lclP=P*Math.pow((lclT+273.15)/(T+273.15),1/0.2854);
+  result.lclTemp=lclT;
+  result.lclPres=lclP;
+  /* Mixing ratio at surface (g/kg) */
+  var e=6.112*Math.exp(17.67*Td/(Td+243.5));
+  var w=0.622*e/(P-e);  /* kg/kg */
+  var wG=w*1000;  /* g/kg */
+  /* Theta-e (equivalent potential temperature) via Bolton (1980) */
+  var theta=(T+273.15)*Math.pow(1000/P,0.2854)*(1+0.28*w);
+  var thetaE=theta*Math.exp((3376/lclT-2.54)*w*(1+0.81*w));
+  /* Lift the parcel along the moist adiabat (thetaE conserved) and
+     compute virtual temperature at each level. Compare to the
+     environment's virtual temperature to get buoyancy. */
+  var cape=0,cin=0;
+  var lfcFound=false;
+  var elFound=false;
+  var parcelT=lclT;  /* parcel temp at LCL (C) */
+  var parcelP=lclP;  /* parcel pressure at LCL */
+  /* Lift from LCL upward. At each pressure level, compute parcel temp
+     by conserving thetaE along the moist adiabat. */
+  for(var i=0;i<profile.length;i++){
+    var lvl=profile[i];
+    if(lvl.pres>=lclP)continue;  /* below LCL - skip (CIN region) */
+    if(lvl.temp==null)continue;
+    var envT=lvl.temp;
+    var envTd=lvl.dwpt;
+    /* Parcel virtual temp at this pressure via thetaE conservation.
+       Approximation: T_parcel = thetaE / exp(...(P)) - 273.15
+       Use the simple approach: along moist adiabat, T decreases
+       following a moist lapse rate. Use the Bolton approximation. */
+    /* T_parcel from thetaE: thetaE = (T_p+273.15) * (1000/P)^0.2854 * exp(...)
+       Solve for T_p iteratively. */
+    var Tp=parcelT;  /* start from previous parcel temp */
+    /* Iterate to solve for parcel temp at this level conserving thetaE */
+    for(var iter=0;iter<5;iter++){
+      var ws=0.622*6.112*Math.exp(17.67*Tp/(Tp+243.5))/(lvl.pres-6.112*Math.exp(17.67*Tp/(Tp+243.5)));
+      var te=(Tp+273.15)*Math.pow(1000/lvl.pres,0.2854)*Math.exp((3376/Math.max(Tp,-50)-2.54)*ws*(1+0.81*ws));
+      if(te>thetaE)Tp-=0.5;else Tp+=0.5;
+    }
+    parcelT=Tp;
+    /* Virtual temperatures: Tv = T*(1+0.61*w) */
+    var wEnv=envTd!=null?0.622*6.112*Math.exp(17.67*envTd/(envTd+243.5))/(lvl.pres-6.112*Math.exp(17.67*envTd/(envTd+243.5))):0;
+    var wParc=0.622*6.112*Math.exp(17.67*Tp/(Tp+243.5))/(lvl.pres-6.112*Math.exp(17.67*Tp/(Tp+243.5)));
+    var envTv=(envT+273.15)*(1+0.61*wEnv);
+    var parcTv=(Tp+273.15)*(1+0.61*wParc);
+    var buoy=parcTv-envTv;  /* positive = buoyant */
+    /* Integrate: dCAPE = (R/v) * buoy * d(ln P)
+       R=287, use dry air approximation */
+    if(i>0){
+      var prevLvl=profile[i-1];
+      var dlnP=Math.log(prevLvl.pres/lvl.pres);
+      var avgBuoy=(buoy+0)/2;  /* simplified - just use current */
+      var delta=287*avgBuoy*dlnP;
+      if(buoy>0){
+        if(lfcFound){
+          cape+=Math.max(0,delta);
+        }else{
+          /* Still in CIN region */
+          cin+=Math.min(0,delta);
+        }
+      }else{
+        if(lfcFound){
+          /* Above LFC, negative buoyancy = EL reached */
+          if(cape>0){elFound=true}
+        }else{
+          cin+=Math.min(0,delta);
+        }
+      }
+      if(buoy>0&&!lfcFound)lfcFound=true;
+    }
+  }
+  result.cape=Math.max(0,Math.round(cape));
+  result.cin=Math.min(0,Math.round(cin));
+  /* Lifted Index: T_env(500) - T_parcel(500) */
+  var p500=null;
+  for(var i=0;i<profile.length;i++){
+    if(profile[i].pres<=500&&profile[i].temp!=null){p500=profile[i];break}
+  }
+  if(p500){
+    /* Lift surface parcel to 500 hPa conserving thetaE */
+    var Tp5=sfc.temp;
+    for(var p=sfc.pres;p>500;p-=5){
+      var ws5=0.622*6.112*Math.exp(17.67*Tp5/(Tp5+243.5))/(p-6.112*Math.exp(17.67*Tp5/(Tp5+243.5)));
+      var te5=(Tp5+273.15)*Math.pow(1000/p,0.2854)*Math.exp((3376/Math.max(Tp5,-50)-2.54)*ws5*(1+0.81*ws5));
+      if(te5>thetaE)Tp5-=0.3;else Tp5+=0.3;
+    }
+    result.liftedIndex=Math.round((p500.temp-Tp5)*100)/100;
+  }
+  /* Precipitable water: integrate water vapor density * dhgt */
+  /* PW = sum( w * (dh/g) ) where w is mixing ratio (kg/kg), dh is height diff (m)
+     Use approx: PW (mm) = sum( w_kgkg * dheight_m / 10 ) */
+  var pw=0;
+  for(var i=1;i<profile.length;i++){
+    var h0=profile[i-1];
+    var h1=profile[i];
+    if(h0.pres<500||h1.pres<500)continue;  /* only integrate up to 500 hPa */
+    if(h0.dwpt==null||h1.dwpt==null)continue;
+    var e0=6.112*Math.exp(17.67*h0.dwpt/(h0.dwpt+243.5));
+    var w0=0.622*e0/(h0.pres-e0);
+    var e1=6.112*Math.exp(17.67*h1.dwpt/(h1.dwpt+243.5));
+    var w1=0.622*e1/(h1.pres-e1);
+    /* Approximate height difference from pressure using hydrostatic approx */
+    var dhgt=29.3*(h0.temp+273.15)*Math.log(h0.pres/h1.pres);
+    var avgW=(w0+w1)/2;
+    pw+=avgW*dhgt/9.81;  /* kg/m2 = mm */
+  }
+  result.pwat=Math.round(pw*10)/10;
+  return result;
 }
 
 /* Parse the Wyoming sounding TEXT:LIST output for derived parameters.
@@ -3549,12 +3731,12 @@ function liBadge(v){
 var ncCh=null;
 var ncCache={data:null,time:0};
 var NOWCAST_SOUNGINGS=[
-  {stnm:'72632',label:'DTX - White Lake',fallbacks:['725330','726344']},
-  {stnm:'725330',label:'IWX - N. Indiana',fallbacks:['72632','726344']},
-  {stnm:'726344',label:'APX - Gaylord',fallbacks:['72632','725330']},
-  {stnm:'724600',label:'ILX - Lincoln, IL',fallbacks:['725460','726450']},
-  {stnm:'725460',label:'DVN - Davenport, IA',fallbacks:['724600','726450']},
-  {stnm:'726450',label:'MPX - Minneapolis',fallbacks:['725460','724600']}
+  {stnm:'72632',icao:'DTX',label:'DTX - White Lake',fallbacks:['725330','726344']},
+  {stnm:'725330',icao:'IWX',label:'IWX - N. Indiana',fallbacks:['72632','726344']},
+  {stnm:'726344',icao:'APX',label:'APX - Gaylord',fallbacks:['72632','725330']},
+  {stnm:'724600',icao:'ILX',label:'ILX - Lincoln, IL',fallbacks:['725460','726450']},
+  {stnm:'725460',icao:'DVN',label:'DVN - Davenport, IA',fallbacks:['724600','726450']},
+  {stnm:'726450',icao:'MPX',label:'MPX - Minneapolis',fallbacks:['725460','724600']}
 ];
 
 async function fNowcast(){
@@ -3647,6 +3829,47 @@ async function fNowcast(){
             }
           }
         }catch(e){}
+      }
+    }
+
+    /* FALLBACK: If Wyoming is unreachable (it frequently goes offline),
+       try the Iowa Environmental Mesonet (IEM) archive. IEM provides
+       the same observed soundings in JSON format. We calculate CAPE/CIN
+       ourselves from the profile. Try the most recent candidate first,
+       then the previous one. */
+    if(!soundingData){
+      for(var si3=0;si3<stationsToTry.length&&!soundingData;si3++){
+        var stnm3=stationsToTry[si3];
+        var stnObj3=NOWCAST_SOUNGINGS.find(function(s){return s.stnm===stnm3});
+        if(!stnObj3||!stnObj3.icao)continue;
+        /* Try most recent candidate */
+        var iemResult=await fetchIemSounding(stnObj3.icao,snd);
+        if(iemResult&&iemResult.profile&&iemResult.profile.length>5){
+          soundingData=iemResult;
+          soundingStation=(stnObj3.label||stnm3)+' (IEM)';
+        }
+        if(!soundingData){
+          /* Try previous candidate (12h earlier) */
+          var prevHour2=snd.from.substring(2,4)==='12'?'00':'12';
+          var prevDay2,prevMonth2,prevYear2;
+          if(prevHour2==='00'&&snd.from.substring(0,2)==='01'){
+            var prev2=new Date(Date.UTC(parseInt(snd.year),parseInt(snd.month)-1,0));
+            prevDay2=('0'+prev2.getUTCDate()).slice(-2);
+            prevMonth2=('0'+(prev2.getUTCMonth()+1)).slice(-2);
+            prevYear2=prev2.getUTCFullYear();
+          }else if(prevHour2==='00'){
+            prevDay2=('0'+(parseInt(snd.from.substring(0,2))-1)).slice(-2);
+            prevMonth2=snd.month;prevYear2=snd.year;
+          }else{
+            prevDay2=snd.from.substring(0,2);prevMonth2=snd.month;prevYear2=snd.year;
+          }
+          var prevCandidate={year:prevYear2,month:prevMonth2,from:prevDay2+prevHour2,to:prevDay2+prevHour2};
+          var iemResult2=await fetchIemSounding(stnObj3.icao,prevCandidate);
+          if(iemResult2&&iemResult2.profile&&iemResult2.profile.length>5){
+            soundingData=iemResult2;
+            soundingStation=(stnObj3.label||stnm3)+' (IEM, 12h old)';
+          }
+        }
       }
     }
 
@@ -4574,29 +4797,54 @@ async function fStormEnv(){
        This handles cases where the Wyoming site hasn't posted the latest
        sounding yet, or where a balloon launch was missed. */
     var candidates=buildSoundingCandidates(4);
-    var txt=null,usedCandidate=null;
+    var parsed=null,usedCandidate=null,source=null;
+    /* PRIMARY: Try University of Wyoming for each candidate */
     for(var ci=0;ci<candidates.length;ci++){
       var c=candidates[ci];
       var url='https://weather.uwyo.edu/cgi-bin/sounding?region=naconf&TYPE=TEXT:LIST&YEAR='+c.year+'&MONTH='+c.month+'&FROM='+c.from+'&TO='+c.to+'&STNM='+st.stnm;
       try{
         var attempt=await fP(url);
         if(attempt&&attempt.length>100&&attempt.indexOf('Observation time')>=0){
-          txt=attempt;
-          usedCandidate=c;
-          break;
+          parsed=parseWyomingSounding(attempt);
+          if(parsed&&parsed.profile&&parsed.profile.length>0){
+            usedCandidate=c;
+            source='Wyoming';
+            break;
+          }
+          parsed=null;
         }
       }catch(e){/* try next candidate */}
     }
+    /* FALLBACK: If Wyoming failed entirely, try Iowa Environmental
+       Mesonet (IEM) for each candidate. IEM is very reliable and
+       provides the same observed sounding data in JSON format. We
+       calculate CAPE/CIN/LI/PWAT ourselves from the profile since
+       IEM doesn't provide derived parameters. */
+    if(!parsed&&st.icao){
+      for(var ci2=0;ci2<candidates.length;ci2++){
+        var c2=candidates[ci2];
+        var iemResult=await fetchIemSounding(st.icao,c2);
+        if(iemResult&&iemResult.profile&&iemResult.profile.length>0){
+          parsed=iemResult;
+          usedCandidate=c2;
+          source='IEM';
+          break;
+        }
+      }
+    }
 
-    if(!txt){
+    if(!parsed){
       content.innerHTML='<div class="empty-st"><i class="fas fa-circle-exclamation" style="margin-right:4px"></i>Sounding data unavailable for '+st.label+'. No recent soundings found in the last 36 hours.</div>';
       return;
     }
-    var parsed=parseWyomingSounding(txt);
     /* Add age indicator to the station label if using an older sounding */
     if(usedCandidate&&usedCandidate.ageHours>12){
       parsed._ageLabel=' ('+Math.round(usedCandidate.ageHours/12)*12+'h old)';
     }
+    /* Mark the data source so the UI can show whether it came from
+       Wyoming (with NWS-derived parameters) or IEM (with JS-calculated
+       parameters). */
+    parsed._source=source||'Wyoming';
     senvCache[cacheKey]={data:parsed,time:now};
     renderStormEnv(parsed,st);
     mkUp('senv');
@@ -4614,7 +4862,8 @@ function renderStormEnv(d,st){
   var html='';
   /* Station header */
   var ageLabel=d._ageLabel||'';
-  html+='<div class="sndenv-station"><i class="fas fa-tower-broadcast"></i>'+st.label+(ageLabel?' <span style="color:var(--wrn);font-size:9px">'+ageLabel+'</span>':'')+'</div>';
+  var sourceLabel=d._source==='IEM'?' <span style="color:#38bdf8;font-size:9px;font-weight:600" title="Iowa Environmental Mesonet fallback - derived parameters calculated in-browser">[IEM]</span>':'';
+  html+='<div class="sndenv-station"><i class="fas fa-tower-broadcast"></i>'+st.label+(ageLabel?' <span style="color:var(--wrn);font-size:9px">'+ageLabel+'</span>':'')+sourceLabel+'</div>';
   html+='<div class="sndenv-time">Obs: '+d.obsTime+' UTC · '+st.sub+'</div>';
   /* Instability parameters */
   html+='<div class="sndenv-cat">Instability</div>';
