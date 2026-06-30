@@ -580,6 +580,28 @@ body.capturing .mom-mode-toggle{display:none}
 .rt-bars-row{display:flex;gap:2px;margin-top:2px}
 .rt-bar-cell{flex:1;text-align:center;font-size:6px;color:var(--t3)}
 
+/* Sunrise & Sunset panel */
+.sun-panel{padding:4px 0}
+.sun-county{font-size:11px;font-weight:700;color:var(--acc);margin-bottom:10px;display:flex;align-items:center;gap:5px}
+.sun-county i{font-size:10px}
+.sun-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.sun-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 12px;display:flex;align-items:center;gap:8px;transition:.2s}
+.sun-card.sun-primary{background:rgba(168,85,246,.06);border-color:rgba(168,85,246,.18)}
+.sun-card.sun-elev{background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.15)}
+.sun-card-icon{font-size:18px;flex-shrink:0;width:28px;text-align:center}
+.sun-card-body{flex:1;min-width:0}
+.sun-card-label{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.sun-card-val{font-size:18px;font-weight:700;color:var(--t1);font-family:'JetBrains Mono',monospace;line-height:1.2;margin-top:2px}
+.sun-card-sub{font-size:8px;color:var(--t3);margin-top:2px}
+.sun-arc{margin-top:6px;padding:14px 8px 8px 8px;background:rgba(0,0,0,.2);border-radius:var(--rs);border:1px solid var(--bdr)}
+.sun-arc-track{position:relative;height:60px}
+.sun-arc-line{position:absolute;bottom:30px;left:0;right:0;height:2px;background:linear-gradient(90deg,#1e1b4b 0%,#312e81 10%,#7c3aed 30%,#fbbf24 50%,#7c3aed 70%,#312e81 90%,#1e1b4b 100%);border-radius:2px}
+.sun-arc-sun{position:absolute;bottom:24px;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle,#fde047,#fbbf24);box-shadow:0 0 12px rgba(251,191,36,.6);transform:translateX(-50%);transition:left .5s ease;z-index:2}
+.sun-arc-labels{display:flex;justify-content:space-between;margin-top:18px;font-size:9px;color:var(--t3);font-family:'JetBrains Mono',monospace}
+.sun-arc-labels span{flex:1;text-align:center}
+.sun-arc-labels span:first-child{text-align:left}
+.sun-arc-labels span:last-child{text-align:right}
+
 /* Nowcast Engine panel */
 .nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
 .nc-card{background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px}
@@ -1314,6 +1336,13 @@ var PANELS=[
     badge:'NWS',badgeClass:'cb-l',gridClass:'gf',
     updateId:'upd-lsr',refreshFn:'fLSR',collapsible:true,tab:'spotting',
     body:'<div id="lsrContent"><div class="lt"><i class="fas fa-spinner"></i> Loading storm reports...</div></div>'
+  },
+  /* 19d. Sunrise & Sunset (solar position calculator, per-county) */
+  {
+    id:'sun',title:'Sunrise & Sunset',icon:'fa-sun',
+    badge:'CALC',badgeClass:'cb-l',gridClass:'gf',
+    updateId:'upd-sun',refreshFn:'fSun',collapsible:true,tab:'current',
+    body:'<div id="sunContent"><div class="lt"><i class="fas fa-spinner"></i> Calculating sun position...</div></div>'
   },
   /* 20. Road Weather Cameras (MiDrive) */
   {
@@ -2807,6 +2836,254 @@ function showScreenshotPreview(dataUrl,title,panelId){
 function uClk(){var n=new Date(),u=n.toUTCString().split(' ')[4],l=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:CONFIG.tz});document.getElementById('clk').textContent=u+' / '+l}
 setInterval(uClk,1e3);uClk();
 
+/* ── Sunrise / Sunset / Solar Position ──────────────────────────────────────
+   Calculates sunrise, sunset, civil dawn, civil dusk, solar noon, and
+   current sun elevation/azimuth for a given lat/lon using standard
+   astronomical formulas (NOAA Solar Calculator algorithm). No API
+   needed - all math is done in-browser. */
+
+/* Calculate Julian Day from a Date object. */
+function toJulianDay(date){
+  return date.getTime()/86400000+2440587.5;
+}
+
+/* Calculate the Geometric Mean Longitude of the Sun (in degrees),
+   given Julian Century (T). */
+function sunGeomMeanLong(T){
+  var L0=280.46646+T*(36000.76983+T*0.0003032);
+  return L0%360;
+}
+
+/* Calculate the Geometric Mean Anomaly of the Sun (in degrees). */
+function sunGeomMeanAnomaly(T){
+  return 357.52911+T*(35999.05029-0.0001537*T);
+}
+
+/* Calculate the eccentricity of Earth's orbit. */
+function earthEccentricity(T){
+  return 0.016708634-T*(0.000042037+0.0000001267*T);
+}
+
+/* Calculate the Sun's equation of center (in degrees). */
+function sunEqOfCenter(T){
+  var M=sunGeomMeanAnomaly(T);
+  var Mrad=M*Math.PI/180;
+  var C=Math.sin(Mrad)*(1.914602-T*(0.004817+0.000014*T))+Math.sin(2*Mrad)*(0.019993-0.000101*T)+Math.sin(3*Mrad)*0.000289;
+  return C;
+}
+
+/* Calculate the Sun's true longitude (in degrees). */
+function sunTrueLong(T){
+  return sunGeomMeanLong(T)+sunEqOfCenter(T);
+}
+
+/* Calculate the Sun's apparent longitude (in degrees, corrected for
+   nutation and aberration). */
+function sunApparentLong(T){
+  var L0=sunTrueLong(T);
+  var omega=125.04-1934.136*T;
+  return L0-0.00569-0.00478*Math.sin(omega*Math.PI/180);
+}
+
+/* Calculate the mean obliquity of the ecliptic (in degrees). */
+function meanObliquity(T){
+  var seconds=21.448-T*(46.8150+T*(0.00059-T*0.001813));
+  return 23.0+seconds/3600;
+}
+
+/* Calculate the corrected obliquity (in degrees). */
+function correctedObliquity(T){
+  var e0=meanObliquity(T);
+  var omega=125.04-1934.136*T;
+  return e0+0.00256*Math.cos(omega*Math.PI/180);
+}
+
+/* Calculate the Sun's declination (in degrees). */
+function sunDeclination(T){
+  var lam=sunApparentLong(T);
+  var e=correctedObliquity(T);
+  var lamRad=lam*Math.PI/180;
+  var eRad=e*Math.PI/180;
+  return Math.asin(Math.sin(eRad)*Math.sin(lamRad))*180/Math.PI;
+}
+
+/* Calculate the Equation of Time (in minutes). */
+function equationOfTime(T){
+  var epsilon=correctedObliquity(T);
+  var L0=sunGeomMeanLong(T);
+  var e=earthEccentricity(T);
+  var m=sunGeomMeanAnomaly(T);
+  var y=Math.tan(epsilon*Math.PI/360);
+  y*=y;
+  var sin2L0=Math.sin(2*L0*Math.PI/180);
+  var cos2L0=Math.cos(2*L0*Math.PI/180);
+  var sin4L0=Math.sin(4*L0*Math.PI/180);
+  var sin1_5m=Math.sin(2*m*Math.PI/180);
+  var sinm=Math.sin(m*Math.PI/180);
+  var Etime=y*sin2L0-2*e*sinm+4*e*y*sinm*cos2L0-0.5*y*y*sin4L0-1.25*e*e*sin1_5m;
+  return Etime*180/Math.PI/4;
+}
+
+/* Calculate sunrise/sunset time for a given lat/lon and date.
+   Returns an object with:
+     sunrise, sunset, solarNoon, dawn, dusk (Date objects or null)
+   Uses the NOAA solar calculator algorithm. */
+function calcSunTimes(lat,lon,date){
+  var result={sunrise:null,sunset:null,solarNoon:null,dawn:null,dusk:null};
+  /* Julian Day for the given date at 00:00 UTC */
+  var jd=toJulianDay(new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())));
+  var T=(jd-2451545.0)/36525;
+  var decl=sunDeclination(T);
+  var eqTime=equationOfTime(T);
+  /* Solar noon: 12:00 - longitude/15 - equationOfTime (in minutes) */
+  var solarNoonOffset=(720-4*lon-eqTime*4);  /* minutes from UTC midnight */
+  result.solarNoon=new Date(jd*86400000-7184836800000+solarNoonOffset*60000);
+  /* Hour angle for sunrise/sunset (using -0.833 degrees for the Sun's
+     center at the horizon, corrected for atmospheric refraction) */
+  var haSunrise=calcHourAngle(decl,lat,-0.833);
+  var haDawn=calcHourAngle(decl,lat,-6);  /* civil dawn/dusk: -6 degrees */
+  if(!isNaN(haSunrise)){
+    var sunriseOffset=solarNoonOffset-haSunrise*4;
+    var sunsetOffset=solarNoonOffset+haSunrise*4;
+    result.sunrise=new Date(jd*86400000-7184836800000+sunriseOffset*60000);
+    result.sunset=new Date(jd*86400000-7184836800000+sunsetOffset*60000);
+  }
+  if(!isNaN(haDawn)){
+    var dawnOffset=solarNoonOffset-haDawn*4;
+    var duskOffset=solarNoonOffset+haDawn*4;
+    result.dawn=new Date(jd*86400000-7184836800000+dawnOffset*60000);
+    result.dusk=new Date(jd*86400000-7184836800000+duskOffset*60000);
+  }
+  return result;
+}
+
+/* Calculate the hour angle (in degrees) for a given solar altitude angle. */
+function calcHourAngle(decl,lat,altAngle){
+  var latRad=lat*Math.PI/180;
+  var declRad=decl*Math.PI/180;
+  var altRad=altAngle*Math.PI/180;
+  var cosHA=(Math.sin(altRad)-Math.sin(latRad)*Math.sin(declRad))/(Math.cos(latRad)*Math.cos(declRad));
+  /* Clamp to [-1,1] to handle polar regions during summer/winter */
+  cosHA=Math.max(-1,Math.min(1,cosHA));
+  return Math.acos(cosHA)*180/Math.PI;
+}
+
+/* Calculate the current sun elevation and azimuth (in degrees) for a
+   given lat/lon and date. Returns {elevation, azimuth}. */
+function calcSunPosition(lat,lon,date){
+  var jd=toJulianDay(date);
+  var T=(jd-2451545.0)/36525;
+  var decl=sunDeclination(T);
+  var eqTime=equationOfTime(T);
+  /* True Solar Time (minutes) */
+  var minutesUTC=date.getUTCHours()*60+date.getUTCMinutes()+date.getUTCSeconds()/60;
+  var trueSolarTime=(minutesUTC+eqTime+4*lon)%1440;
+  /* Hour angle (degrees): 0 at solar noon, negative before noon */
+  var ha=trueSolarTime/4-180;
+  var latRad=lat*Math.PI/180;
+  var declRad=decl*Math.PI/180;
+  var haRad=ha*Math.PI/180;
+  /* Solar elevation */
+  var sinElev=Math.sin(latRad)*Math.sin(declRad)+Math.cos(latRad)*Math.cos(declRad)*Math.cos(haRad);
+  var elevation=Math.asin(sinElev)*180/Math.PI;
+  /* Solar azimuth (measured from North, clockwise) */
+  var cosAz=(Math.sin(declRad)-Math.sin(latRad)*sinElev)/(Math.cos(latRad)*Math.cos(elevation*Math.PI/180));
+  cosAz=Math.max(-1,Math.min(1,cosAz));
+  var azimuth=Math.acos(cosAz)*180/Math.PI;
+  if(ha>0)azimuth=360-azimuth;
+  return {elevation:elevation,azimuth:azimuth};
+}
+
+/* Format a Date object as HH:MM in the configured timezone. */
+function fmtSunTime(date){
+  if(!date||isNaN(date.getTime()))return '--:--';
+  return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'2-digit',minute:'2-digit',hour12:false});
+}
+
+/* Refresh the Sunrise & Sunset panel for the currently-selected county. */
+function fSun(){
+  var content=document.getElementById('sunContent');
+  if(!content)return;
+  if(!CUR_LOC_OBJ){content.innerHTML='<div class="empty-st">No county selected</div>';return}
+  var lat=CUR_LOC_OBJ.lat,lon=CUR_LOC_OBJ.lon;
+  var now=new Date();
+  /* Calculate sun times for today */
+  var times=calcSunTimes(lat,lon,now);
+  /* Calculate current sun position */
+  var pos=calcSunPosition(lat,lon,now);
+  /* Build the HTML */
+  var html='<div class="sun-panel">'+
+    '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+'</div>'+
+    '<div class="sun-grid">'+
+      '<div class="sun-card sun-primary">'+
+        '<div class="sun-card-icon"><i class="fas fa-sun" style="color:#fbbf24"></i></div>'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Sunrise</div>'+
+          '<div class="sun-card-val">'+fmtSunTime(times.sunrise)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card sun-primary">'+
+        '<div class="sun-card-icon"><i class="fas fa-moon" style="color:#818cf8"></i></div>'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Sunset</div>'+
+          '<div class="sun-card-val">'+fmtSunTime(times.sunset)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card">'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Solar Noon</div>'+
+          '<div class="sun-card-val">'+fmtSunTime(times.solarNoon)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card">'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Civil Dawn</div>'+
+          '<div class="sun-card-val">'+fmtSunTime(times.dawn)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card">'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Civil Dusk</div>'+
+          '<div class="sun-card-val">'+fmtSunTime(times.dusk)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card sun-elev">'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Sun Elevation</div>'+
+          '<div class="sun-card-val">'+(pos.elevation>=0?'<span style="color:#fbbf24">'+pos.elevation.toFixed(1)+'°</span>':'<span style="color:#818cf8">'+pos.elevation.toFixed(1)+'°</span>')+'</div>'+
+          '<div class="sun-card-sub">'+(pos.elevation>=0?'Above horizon':'Below horizon')+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="sun-arc">'+
+      '<div class="sun-arc-track">'+
+        '<div class="sun-arc-line"></div>'+
+        '<div class="sun-arc-sun" id="sunArcSun" style="left:'+calcSunArcPosition(times,now)+'%"></div>'+
+        '<div class="sun-arc-labels">'+
+          '<span>'+fmtSunTime(times.sunrise)+'</span>'+
+          '<span>Solar Noon '+fmtSunTime(times.solarNoon)+'</span>'+
+          '<span>'+fmtSunTime(times.sunset)+'</span>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+  content.innerHTML=html;
+  mkUp('sun');
+}
+
+/* Calculate the sun's position along the arc as a percentage (0-100).
+   Returns 0 if before sunrise, 100 if after sunset. */
+function calcSunArcPosition(times,now){
+  if(!times.sunrise||!times.sunset)return 50;
+  var sr=times.sunrise.getTime();
+  var ss=times.sunset.getTime();
+  var cur=now.getTime();
+  if(cur<=sr)return 0;
+  if(cur>=ss)return 100;
+  return Math.round((cur-sr)/(ss-sr)*100);
+}
+
+
 /* ── NOAA Weather Radio player (configured via CONFIG.nwrStations) ───────────
    Supports multiple stations. Click the frequency label (e.g. "WWF34 162.400")
    to cycle to the next station. If a station is playing, it switches to the
@@ -2866,6 +3143,8 @@ function setLoc(key){
   fWx();fDWML();fAl();rMeteo();fGridpoint();
   /* Re-render the rain tracker for the newly selected county */
   refreshRainTrackerForCounty();
+  /* Re-render the sunrise/sunset panel for the newly selected county */
+  fSun();
 }
 
 /* Update panels with dynamicTitle=true to include the current location label.
@@ -8034,7 +8313,7 @@ async function refreshAll(){
        (fAl), alert polygon map (fAlertMap), WWA summary (fWWASummary), the
        static WWA map (rWWA), and road weather cameras (rRoadCams - moved
        to Current Conditions since it's part of the at-a-glance view). */
-    var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA','fRainTracker','fKnNowcast'];
+    var alwaysFns=['fWx','fAl','fAlertMap','fWWASummary','rWWA','fRainTracker','fKnNowcast','fSun'];
     var alwaysSyncFns=['rRoadCams'];
     await Promise.all(alwaysFns.map(function(name){try{return window[name]()}catch(e){console.error(name+' error:',e)}}));
     alwaysSyncFns.forEach(function(name){try{window[name]()}catch(e){console.error(name+' error:',e)}});
@@ -8131,6 +8410,7 @@ async function init(){
   fNWSNational();
   fHeadlines();
   rSkewT();
+  fSun();  /* sunrise/sunset panel (calculated, no fetch) */
   initAlertMap();
   fAlertMap();
   fWWASummary();
@@ -8139,6 +8419,10 @@ async function init(){
   await refreshAll();
   /* 5. Schedule auto-refresh */
   setInterval(refreshAll,CONFIG.refreshIntervalMs);
+  /* 6. Refresh the sun position every 60 seconds so the elevation and
+     arc indicator update continuously throughout the day. This is a
+     pure calculation (no API fetch) so it's very lightweight. */
+  setInterval(fSun,60000);
 }
 
 /* ── Facebook SDK integration ────────────────────────────────────────────────
