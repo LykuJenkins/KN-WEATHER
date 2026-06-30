@@ -3468,24 +3468,264 @@ function updateDynamicTitles(){
   });
 }
 
-/* ── Open-Meteo (current + hourly + 7-day + threats) ──────────────────────── */
-async function fWx(){
+/* ── Weather data (NWS primary, Open-Meteo backup) ──────────────────────────
+   fWx() tries NWS/NOAA API first for current/hourly/7-day. If NWS fails,
+   falls back to Open-Meteo. The threats panel (CAPE/LI) always uses
+   Open-Meteo since NWS doesn't provide CAPE directly. */
+
+/* NWS grid info cache - avoids re-fetching /points on every refresh.
+   Keyed by lat,lon. Stores {gridId, gridX, gridY, timestamp}. */
+var NWS_GRID_CACHE={};
+var NWS_GRID_CACHE_MS=30*60*1000;  /* 30 minutes */
+
+/* Get NWS grid info (office, gridX, gridY) for a location.
+   Cached for 30 minutes since grid assignments rarely change. */
+async function getNwsGrid(loc){
+  if(!loc)return null;
+  var cacheKey=loc.lat.toFixed(3)+','+loc.lon.toFixed(3);
+  var cached=NWS_GRID_CACHE[cacheKey];
+  if(cached&&Date.now()-cached.timestamp<NWS_GRID_CACHE_MS){
+    return cached;
+  }
+  try{
+    var pr=await Promise.race([fetch(url.points(loc),{headers:{'Accept':'application/geo+json'}}),to(10e3)]);
+    if(!pr.ok)throw 0;
+    var pd=await pr.json();
+    var grid={
+      gridId:pd.properties.gridId,
+      gridX:pd.properties.gridX,
+      gridY:pd.properties.gridY,
+      timestamp:Date.now()
+    };
+    NWS_GRID_CACHE[cacheKey]=grid;
+    return grid;
+  }catch(e){
+    console.warn('NWS grid fetch failed:',e);
+    return null;
+  }
+}
+
+/* Map NWS shortForecast text to a WMO weather code (for icon/description).
+   NWS uses descriptive text like "Sunny", "Rain Showers", "Thunderstorm". */
+function nwsShortForecastToWmo(text){
+  if(!text)return 0;
+  var t=text.toLowerCase();
+  if(t.includes('thunderstorm')||t.includes('thunder'))return 95;
+  if(t.includes('snow'))return t.includes('heavy')?75:73;
+  if(t.includes('sleet')||t.includes('ice'))return 66;
+  if(t.includes('rain shower'))return t.includes('heavy')?81:80;
+  if(t.includes('rain')||t.includes('drizzle'))return t.includes('heavy')?63:61;
+  if(t.includes('freezing rain'))return 66;
+  if(t.includes('fog')||t.includes('mist'))return 45;
+  if(t.includes('haze')||t.includes('smoke')||t.includes('dust'))return 45;
+  if(t.includes('overcast'))return 8;
+  if(t.includes('cloudy')){
+    if(t.includes('partly'))return 2;
+    if(t.includes('mostly'))return 3;
+    return 4;
+  }
+  if(t.includes('clear')||t.includes('sunny')||t.includes('fair'))return 0;
+  if(t.includes('wind'))return 0;
+  return 0;
+}
+
+/* Fetch weather data from NWS/NOAA API.
+   - Current: from /gridpoints raw data (first hour) + station observation
+   - Hourly: from /forecast/hourly (156 hours)
+   - 7-day: from /forecast (14 periods)
+   - Threats: still from Open-Meteo (NWS doesn't provide CAPE)
+   Returns true on success, false on failure (so caller can fall back). */
+async function fWxNws(){
+  var grid=await getNwsGrid(CUR_LOC_OBJ);
+  if(!grid)return false;
+  /* Fetch hourly + 7-day forecast in parallel */
+  var hourlyUrl='https://api.weather.gov/gridpoints/'+grid.gridId+'/'+grid.gridX+','+grid.gridY+'/forecast/hourly';
+  var dailyUrl='https://api.weather.gov/gridpoints/'+grid.gridId+'/'+grid.gridX+','+grid.gridY+'/forecast';
+  var rawUrl='https://api.weather.gov/gridpoints/'+grid.gridId+'/'+grid.gridX+','+grid.gridY;
+  var results=await Promise.allSettled([
+    Promise.race([fP(hourlyUrl),to(15e3)]),
+    Promise.race([fP(dailyUrl),to(15e3)]),
+    Promise.race([fP(rawUrl),to(15e3)])
+  ]);
+  /* At least hourly or daily must succeed */
+  if(results[0].status!=='fulfilled'||!results[0].value){
+    console.warn('NWS hourly forecast failed');
+    return false;
+  }
+  /* Parse hourly forecast */
+  var hourlyData=null;
+  try{
+    var hData=JSON.parse(results[0].value);
+    if(hData&&hData.properties&&hData.properties.periods){
+      hourlyData=hData.properties.periods;
+    }
+  }catch(e){console.warn('NWS hourly parse failed:',e)}
+
+  /* Parse daily forecast */
+  var dailyData=null;
+  try{
+    if(results[1].status==='fulfilled'&&results[1].value){
+      var dData=JSON.parse(results[1].value);
+      if(dData&&dData.properties&&dData.properties.periods){
+        dailyData=dData.properties.periods;
+      }
+    }
+  }catch(e){console.warn('NWS daily parse failed:',e)}
+
+  /* Parse raw gridpoint data for current conditions */
+  var rawData=null;
+  try{
+    if(results[2].status==='fulfilled'&&results[2].value){
+      var rData=JSON.parse(results[2].value);
+      if(rData&&rData.properties)rawData=rData.properties;
+    }
+  }catch(e){console.warn('NWS raw parse failed:',e)}
+
+  if(!hourlyData)return false;
+
+  /* Convert NWS hourly to Open-Meteo format for rHr() */
+  var omHourly={time:[],temperature_2m:[],precipitation_probability:[]};
+  /* NWS hourly doesn't include precipitation probability directly,
+     but we can get it from the raw gridpoint data if available. */
+  var popValues={};
+  if(rawData&&rawData.probabilityOfPrecipitation&&rawData.probabilityOfPrecipitation.values){
+    rawData.probabilityOfPrecipitation.values.forEach(function(v){
+      var m=v.validTime.match(/([^\/]+)\/PT(\d+)H/);
+      if(m){
+        var startT=new Date(m[1]).getTime();
+        var hours=parseInt(m[2]);
+        for(var h=0;h<hours;h++){
+          popValues[new Date(startT+h*3600000).toISOString()]=v.value;
+        }
+      }
+    });
+  }
+  for(var i=0;i<Math.min(hourlyData.length,156);i++){
+    var p=hourlyData[i];
+    var t=new Date(p.startTime);
+    omHourly.time.push(t.toISOString());
+    omHourly.temperature_2m.push(p.temperature);
+    /* Match PoP by hour */
+    var pop=0;
+    var tKey=t.toISOString();
+    if(popValues[tKey]!=null)pop=popValues[tKey];
+    omHourly.precipitation_probability.push(pop);
+  }
+  rHr(omHourly);
+  mkUp('hr');
+
+  /* Convert NWS daily to Open-Meteo format for rFc() */
+  if(dailyData){
+    var omDaily={time:[],temperature_2m_max:[],temperature_2m_min:[],weather_code:[],precipitation_probability_max:[]};
+    /* NWS daily has 14 periods (7 days × day/night). Pair them up. */
+    for(var i=0;i<dailyData.length;i+=2){
+      var dayPeriod=dailyData[i];
+      var nightPeriod=dailyData[i+1]||dayPeriod;
+      var d=new Date(dayPeriod.startTime);
+      omDaily.time.push(d.toISOString().split('T')[0]);
+      omDaily.temperature_2m_max.push(dayPeriod.temperature);
+      omDaily.temperature_2m_min.push(nightPeriod.temperature);
+      omDaily.weather_code.push(nwsShortForecastToWmo(dayPeriod.shortForecast));
+      /* Get PoP from raw data if available */
+      var maxPop=0;
+      var dayStart=new Date(dayPeriod.startTime).getTime();
+      var dayEnd=new Date(dayPeriod.endTime).getTime();
+      for(var popKey in popValues){
+        var popT=new Date(popKey).getTime();
+        if(popT>=dayStart&&popT<dayEnd&&popValues[popKey]>maxPop)maxPop=popValues[popKey];
+      }
+      omDaily.precipitation_probability_max.push(maxPop);
+    }
+    rFc(omDaily);
+    mkUp('fc');
+  }
+
+  /* Current conditions from raw gridpoint data (first hour) */
+  if(rawData){
+    var omCurrent={
+      temperature_2m:null,
+      apparent_temperature:null,
+      relative_humidity_2m:null,
+      dew_point_2m:null,
+      wind_speed_10m:null,
+      wind_direction_10m:null,
+      surface_pressure:null,
+      weather_code:0
+    };
+    /* Extract first value from each property */
+    function firstVal(prop){
+      if(!rawData[prop]||!rawData[prop].values||!rawData[prop].values[0])return null;
+      return rawData[prop].values[0].value;
+    }
+    var tempC=firstVal('temperature');
+    var dwptC=firstVal('dewpoint');
+    var appC=firstVal('apparentTemperature')||firstVal('heatIndex')||firstVal('windChill');
+    omCurrent.temperature_2m=tempC!=null?tempC*9/5+32:null;
+    omCurrent.apparent_temperature=appC!=null?appC*9/5+32:omCurrent.temperature_2m;
+    omCurrent.relative_humidity_2m=firstVal('relativeHumidity');
+    omCurrent.dew_point_2m=dwptC!=null?dwptC*9/5+32:null;
+    omCurrent.wind_speed_10m=firstVal('windSpeed');  /* already m/s in NWS raw */
+    omCurrent.wind_direction_10m=firstVal('windDirection');
+    omCurrent.surface_pressure=firstVal('barometricPressure');  /* Pa */
+    omCurrent.surface_pressure=omCurrent.surface_pressure!=null?omCurrent.surface_pressure/100:null;  /* → hPa */
+    /* Weather code from first hourly forecast period */
+    if(hourlyData[0]){
+      omCurrent.weather_code=nwsShortForecastToWmo(hourlyData[0].shortForecast);
+    }
+    rCu(omCurrent);
+    mkUp('cur');
+  }
+
+  var hBdg=document.getElementById('hourlyBdg');
+  if(hBdg){hBdg.textContent='NWS';hBdg.className='cb cb-l'}
+
+  /* Fetch actual station observation to override current with real data */
+  fetchNwsObservation(CUR_LOC_OBJ);
+
+  /* Also fetch Open-Meteo for threats (CAPE/LI) since NWS doesn't provide those */
+  fWxThreats();
+
+  console.log('NWS weather data loaded successfully');
+  return true;
+}
+
+/* Fetch threats data from Open-Meteo (CAPE, Lifted Index).
+   NWS doesn't provide CAPE directly, so threats always use Open-Meteo. */
+async function fWxThreats(){
+  try{
+    var u=url.openMeteo(CUR_LOC_OBJ);
+    var r=await fetch(u);if(!r.ok)throw 0;var d=await r.json();
+    rTh(d.current,d.hourly);
+    mkUp('thr');
+  }catch(e){console.warn('Threats data unavailable:',e)}
+}
+
+/* Open-Meteo weather data (backup if NWS fails). Same as the old fWx(). */
+async function fWxOpenMeteo(){
   var u=url.openMeteo(CUR_LOC_OBJ);
   try{
     var r=await fetch(u);if(!r.ok)throw 0;var d=await r.json();
     rCu(d.current);rHr(d.hourly);rFc(d.daily);rTh(d.current,d.hourly);
     mkUp('cur');mkUp('hr');mkUp('fc');mkUp('thr');
     var hBdg=document.getElementById('hourlyBdg');
-    if(hBdg){hBdg.textContent='Live';hBdg.className='cb cb-l'}
+    if(hBdg){hBdg.textContent='OM';hBdg.className='cb cb-l'}
   }catch(e){document.getElementById('cCd').textContent='Data unavailable'}
-  /* Fetch NWS observation data for the current location and override the
-     Open-Meteo current values with actual NWS station observations. This
-     makes the Current panel match what NWS reports for the zone.
-     Falls back silently to Open-Meteo data if NWS observation is unavailable.
-     Uses the NWS /points API to get the grid, then /gridpoints/.../stations
-     to find the nearest observation station, then /stations/.../observations
-     to get the latest reading. */
+  /* Fetch NWS observation to override current with actual station data */
   fetchNwsObservation(CUR_LOC_OBJ);
+}
+
+/* Main weather fetch: NWS first, Open-Meteo backup. */
+async function fWx(){
+  var nwsOk=false;
+  try{
+    nwsOk=await fWxNws();
+  }catch(e){
+    console.warn('NWS weather fetch failed, falling back to Open-Meteo:',e);
+  }
+  if(!nwsOk){
+    console.log('Falling back to Open-Meteo for weather data');
+    await fWxOpenMeteo();
+  }
 }
 
 /* Fetch the nearest NWS observation station's latest observation for the
