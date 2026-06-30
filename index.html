@@ -1398,6 +1398,27 @@ var avCache={},spcRC={};
 
 /* ── Generic utilities ─────────────────────────────────────────────────────── */
 function wI(c,d){var i=WMO[c]||{d:'Unknown',i:'fa-question',di:'fa-question'};return{d:i.d,i:d?i.di:i.i}}
+/* Map NWS textDescription to a Font Awesome weather icon.
+   This is used when overriding Open-Meteo's condition with the actual
+   NWS station observation, so the icon matches the text. */
+function nwsTextToIcon(text){
+  if(!text)return null;
+  var t=text.toLowerCase();
+  if(t.includes('thunderstorm')||t.includes('thunder'))return 'fa-cloud-bolt';
+  if(t.includes('rain')||t.includes('drizzle'))return t.includes('light')?'fa-cloud-rain':'fa-cloud-showers-heavy';
+  if(t.includes('snow'))return 'fa-snowflake';
+  if(t.includes('freezing'))return 'fa-cloud-rain';
+  if(t.includes('fog')||t.includes('mist'))return 'fa-smog';
+  if(t.includes('haze')||t.includes('smoke')||t.includes('dust'))return 'fa-smog';
+  if(t.includes('overcast'))return 'fa-cloud';
+  if(t.includes('cloudy')||t.includes('clouds')){
+    if(t.includes('partly')||t.includes('mostly'))return 'fa-cloud-sun';
+    return 'fa-cloud';
+  }
+  if(t.includes('fair')||t.includes('clear')||t.includes('sunny'))return 'fa-sun';
+  if(t.includes('wind'))return 'fa-wind';
+  return null;
+}
 function c2f(c){if(c===null||c===undefined||c==='')return null;return Math.round(parseFloat(c)*9/5+32)}
 function h2i(m){return(m*.02953).toFixed(2)}
 function m2m(m){return(m*2.23694).toFixed(0)}
@@ -3519,19 +3540,41 @@ async function fetchNwsObservation(loc){
         var obs=od.features&&od.features[0];
         if(!obs||!obs.properties)continue;
         var p=obs.properties;
-        /* Only use the observation if it's less than 1 hour old */
+        /* Only use the observation if it's less than 2 hours old
+           (was 1 hour, but some stations report less frequently) */
         var obsTime=new Date(p.timestamp);
-        if(Date.now()-obsTime.getTime()>60*60*1000)continue;
+        if(Date.now()-obsTime.getTime()>2*60*60*1000){
+          console.debug('NWS obs too old for '+stationId+': '+p.timestamp);
+          continue;
+        }
+        console.log('NWS observation loaded from '+stationId+': '+p.textDescription);
         /* Update the Current panel with NWS observation data.
            NWS returns values in metric units (Celsius, km/h, hPa, meters).
            Convert to the same units Open-Meteo uses (Fahrenheit, mph, inHg). */
         /* Override the weather condition text with NWS textDescription
-           (e.g., "Rain Fog/Mist", "Light Rain") instead of Open-Meteo's
-           generic weather code mapping (e.g., "Overcast"). The NWS
-           textDescription is the official observation and includes present
-           weather phenomena (rain, fog, mist) that Open-Meteo misses. */
+           (e.g., "Rain Fog/Mist", "Light Rain", "Fair") instead of Open-Meteo's
+           generic weather code mapping (e.g., "Overcast", "Thunderstorm").
+           The NWS textDescription is the official station observation and
+           includes present weather phenomena that Open-Meteo's model-based
+           codes may miss or over-report (e.g., Open-Meteo may show
+           "Thunderstorm" for the grid cell while the actual station
+           reports "Fair"). */
         if(p.textDescription){
           document.getElementById('cCd').textContent=p.textDescription;
+          /* Also update the icon to match the NWS textDescription.
+             Map common NWS descriptions to Font Awesome weather icons. */
+          var nwsIcon=nwsTextToIcon(p.textDescription);
+          if(nwsIcon){
+            document.getElementById('cIco').innerHTML='<i class="fas '+nwsIcon+'"></i>';
+          }
+          /* Show the NWS source line so the user knows this is an actual
+             station observation, not a model forecast */
+          var nwsLine=document.getElementById('nwsLine');
+          var nwsTxt=document.getElementById('nwsTxt');
+          if(nwsLine&&nwsTxt){
+            nwsTxt.textContent=stationId+' · '+p.textDescription+' · '+obsTime.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'numeric',minute:'2-digit',hour12:true});
+            nwsLine.style.display='';
+          }
         }
         if(p.temperature&&p.temperature.value!=null){
           document.getElementById('cTmp').textContent=Math.round(p.temperature.value*9/5+32)+'°F';
@@ -3592,6 +3635,11 @@ function rCu(c){
   document.getElementById('cFl').textContent='Feels like '+Math.round(c.apparent_temperature)+'°F';
   document.getElementById('cCd').textContent=i.d;
   document.getElementById('cIco').innerHTML='<i class="fas '+i.i+'"></i>';
+  /* Hide the NWS source line when Open-Meteo data is rendered - it will
+     be shown again if fetchNwsObservation() successfully overrides with
+     actual station data. */
+  var nwsLine=document.getElementById('nwsLine');
+  if(nwsLine)nwsLine.style.display='none';
   document.getElementById('dHu').innerHTML=c.relative_humidity_2m+'<span class="du">%</span>';
   document.getElementById('dDw').innerHTML=Math.round(c.dew_point_2m)+'<span class="du">°F</span>';
   document.getElementById('dWi').innerHTML=m2m(c.wind_speed_10m)+' '+d2c(c.wind_direction_10m)+'<span class="du">mph</span>';
