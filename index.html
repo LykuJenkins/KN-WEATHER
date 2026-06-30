@@ -3328,11 +3328,22 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort){
     moonStarted=true;
   }
 
-  /* Current sun and moon positions (using their respective "noon" references) */
+  /* Current sun and moon positions.
+     The current-position dots are plotted ON the horizon circle line
+     (edge) at the correct time angle, so the user can see exactly
+     where on the clock the sun/moon currently is. The paths still
+     use elevation for their curve shape, but the live position marker
+     sits on the horizon ring at the time angle. */
+  function timeAngleToXY(hoursFromNoon){
+    /* Plot on the horizon circle edge (radius = horizonR) */
+    var r=horizonR;
+    var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
+    return {x:cx+r*Math.cos(angleRad),y:cy+r*Math.sin(angleRad)};
+  }
   var sunHours=times.solarNoon?hoursFromNoon(now.getTime(),times.solarNoon.getTime()):0;
   var moonHours=hoursFromNoon(now.getTime(),moonPeakT);
-  var sunXY=timeElevToXY(sunHours,pos.elevation);
-  var moonXY=timeElevToXY(moonHours,moonPos.elevation);
+  var sunXY=timeAngleToXY(sunHours);
+  var moonXY=timeAngleToXY(moonHours);
   var sunBelow=pos.elevation<0;
   var moonBelow=moonPos.elevation<0;
 
