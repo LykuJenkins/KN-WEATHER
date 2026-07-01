@@ -3700,9 +3700,51 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
       });
       return clockSvg;
     })()+
-    /* Current moon position */
-    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="12" fill="url(#moonGlowClock)" opacity="'+(moonBelow?0.5:1)+'"/>'+
-    '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="5" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1.5" opacity="'+(moonBelow?0.6:1)+'"/>'+
+    /* Current moon position - rendered with the actual moon phase icon
+       so it changes appearance based on the current phase (new, crescent,
+       quarter, gibbous, full). The icon is drawn as SVG paths at the
+       moon's clock position. */
+    (function(){
+      var mx=moonXY.x,my=moonXY.y;
+      var mr=8;  /* moon icon radius on the chart */
+      var phase=moon.phase;  /* 0=new, 0.5=full, 0.25=first quarter, 0.75=last quarter */
+      var opacity=moonBelow?0.6:1;
+      var moonSvg='';
+      /* Glow */
+      moonSvg+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+(mr+4)+'" fill="url(#moonGlowClock)" opacity="'+(opacity*0.7)+'"/>';
+      /* Build the moon phase shape using two overlapping circles.
+         The dark base circle + a light overlay whose shape depends on phase. */
+      if(phase<0.5){
+        /* Waxing: illumination grows from right */
+        var illumFrac=phase*2;  /* 0 at new, 1 at full */
+        if(illumFrac<0.5){
+          /* Waxing crescent: dark circle with light crescent on right */
+          var termW=mr*Math.abs(Math.cos(illumFrac*2*Math.PI));
+          moonSvg+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="1" opacity="'+opacity+'"/>';
+          moonSvg+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+termW.toFixed(1)+','+mr+' 0 0,'+(illumFrac<0.25?0:1)+' '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#e2e8f0" opacity="'+opacity+'"/>';
+        }else{
+          /* Waxing gibbous: light circle with dark crescent on left */
+          var darkW=mr*Math.abs(Math.cos((illumFrac-0.5)*2*Math.PI));
+          moonSvg+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#e2e8f0" opacity="'+opacity+'"/>';
+          moonSvg+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+darkW.toFixed(1)+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#1e1b4b" opacity="'+(opacity*0.7)+'"/>';
+        }
+      }else{
+        /* Waning: illumination shrinks from left */
+        var illumFrac=(1-phase)*2;  /* 1 at full, 0 at new */
+        if(illumFrac>0.5){
+          /* Waning gibbous: light circle with dark crescent on right */
+          var darkW=mr*Math.abs(Math.cos((illumFrac-0.5)*2*Math.PI));
+          moonSvg+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#e2e8f0" opacity="'+opacity+'"/>';
+          moonSvg+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+darkW.toFixed(1)+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#1e1b4b" opacity="'+(opacity*0.7)+'"/>';
+        }else{
+          /* Waning crescent: dark circle with light crescent on left */
+          var termW=mr*Math.abs(Math.cos(illumFrac*2*Math.PI));
+          moonSvg+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="1" opacity="'+opacity+'"/>';
+          moonSvg+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+termW.toFixed(1)+','+mr+' 0 0,'+(illumFrac<0.25?1:0)+' '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#e2e8f0" opacity="'+opacity+'"/>';
+        }
+      }
+      return moonSvg;
+    })()+
     /* Current sun position */
     '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="16" fill="url(#sunGlowClock)" opacity="'+(sunBelow?0.4:1)+'"/>'+
     '<circle cx="'+sunXY.x+'" cy="'+sunXY.y+'" r="7" fill="#fde047" stroke="#fbbf24" stroke-width="2" opacity="'+(sunBelow?0.5:1)+'"/>'+
