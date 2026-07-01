@@ -3643,6 +3643,63 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     })():'')+
     /* Moon path (perfect circle, slightly inside) */
     moonPathCircle+
+    /* Analog clock face in the center showing current EDT time.
+       12-hour format with hour and minute hands, tick marks at each hour. */
+    (function(){
+      var clockFaceR=clockR-55;  /* radius of the analog clock face */
+      var clockSvg='';
+      /* Clock face background circle (subtle) */
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="rgba(14,14,21,.6)" stroke="#3a3a4e" stroke-width="1"/>';
+      /* Hour tick marks (12 ticks) */
+      for(var h=0;h<12;h++){
+        var tickAngle=(h*30-90)*Math.PI/180;  /* 0 at top, 30° per hour */
+        var isMajor=(h%3===0);  /* 12, 3, 6, 9 are longer/bolder */
+        var tickLen=isMajor?8:5;
+        var tickW=isMajor?1.5:0.8;
+        var tickColor=isMajor?'#9898a8':'#5c5c6e';
+        var x1=cx+(clockFaceR-tickLen)*Math.cos(tickAngle);
+        var y1=cy+(clockFaceR-tickLen)*Math.sin(tickAngle);
+        var x2=cx+clockFaceR*Math.cos(tickAngle);
+        var y2=cy+clockFaceR*Math.sin(tickAngle);
+        clockSvg+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="'+tickColor+'" stroke-width="'+tickW+'"/>';
+      }
+      /* Minute tick marks (60 ticks, skip the hour positions) */
+      for(var m=0;m<60;m++){
+        if(m%5===0)continue;  /* skip hours (already drawn) */
+        var minAngle=(m*6-90)*Math.PI/180;
+        var mx1=cx+(clockFaceR-3)*Math.cos(minAngle);
+        var my1=cy+(clockFaceR-3)*Math.sin(minAngle);
+        var mx2=cx+clockFaceR*Math.cos(minAngle);
+        var my2=cy+clockFaceR*Math.sin(minAngle);
+        clockSvg+='<line x1="'+mx1.toFixed(1)+'" y1="'+my1.toFixed(1)+'" x2="'+mx2.toFixed(1)+'" y2="'+my2.toFixed(1)+'" stroke="#3a3a4e" stroke-width="0.4"/>';
+      }
+      /* Get current time in EDT for the clock hands */
+      var nowEDT=new Date(now.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+      var hours=nowEDT.getHours()%12;  /* 0-11 */
+      var minutes=nowEDT.getMinutes();
+      var seconds=nowEDT.getSeconds();
+      /* Hour hand: 360°/12 = 30° per hour, plus minutes contribution */
+      var hourAngle=((hours+minutes/60)*30-90)*Math.PI/180;
+      var hourLen=clockFaceR*0.5;
+      var hourX=cx+hourLen*Math.cos(hourAngle);
+      var hourY=cy+hourLen*Math.sin(hourAngle);
+      /* Minute hand: 360°/60 = 6° per minute */
+      var minAngle=((minutes+seconds/60)*6-90)*Math.PI/180;
+      var minLen=clockFaceR*0.75;
+      var minX=cx+minLen*Math.cos(minAngle);
+      var minY=cy+minLen*Math.sin(minAngle);
+      /* Draw hands */
+      clockSvg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+hourX.toFixed(1)+'" y2="'+hourY.toFixed(1)+'" stroke="#e4e4ec" stroke-width="3" stroke-linecap="round"/>';
+      clockSvg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+minX.toFixed(1)+'" y2="'+minY.toFixed(1)+'" stroke="#a855f6" stroke-width="2" stroke-linecap="round"/>';
+      /* Center dot */
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="3" fill="#a855f6" stroke="#e4e4ec" stroke-width="1"/>';
+      /* 12, 3, 6, 9 labels */
+      var labels=[{n:'12',x:cx,y:cy-clockFaceR+14},{n:'3',x:cx+clockFaceR-12,y:cy+3},{n:'6',x:cx,y:cy+clockFaceR-6},{n:'9',x:cx-clockFaceR+12,y:cy+3}];
+      labels.forEach(function(l){
+        clockSvg+='<text x="'+l.x+'" y="'+l.y+'" font-size="8" fill="#9898a8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">'+l.n+'</text>';
+      });
+      return clockSvg;
+    })()+
     /* Current moon position */
     '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="12" fill="url(#moonGlowClock)" opacity="'+(moonBelow?0.5:1)+'"/>'+
     '<circle cx="'+moonXY.x+'" cy="'+moonXY.y+'" r="5" fill="#e2e8f0" stroke="#c4b5fd" stroke-width="1.5" opacity="'+(moonBelow?0.6:1)+'"/>'+
@@ -3654,6 +3711,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     '<div class="sky-chart-legend">'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#a855f6"></span>Clock</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#0a0a1a,#f97316,#fde047,#f97316,#0a0a1a)"></span>Daylight</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
       (thermalPeakHour!==null?(function(){
