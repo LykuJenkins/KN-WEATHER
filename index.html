@@ -2994,29 +2994,57 @@ function equationOfTime(T){
    Uses the NOAA solar calculator algorithm. */
 function calcSunTimes(lat,lon,date){
   var result={sunrise:null,sunset:null,solarNoon:null,dawn:null,dusk:null};
-  /* Midnight UTC for the given date - this is our reference point.
-     All sun times are computed as minutes from this midnight. */
-  var midnightUTC=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));
-  var jd=toJulianDay(midnightUTC);
+  /* Midnight LOCAL TIME for the given date - this is our reference point.
+     We must use the local timezone (CONFIG.tz) so that sun times are
+     calculated for the correct calendar day. Using UTC midnight causes
+     bugs in the evening when the UTC date has already advanced past
+     midnight while the local date hasn't. */
+  var localStr=date.toLocaleString('en-US',{timeZone:CONFIG.tz,year:'numeric',month:'2-digit',day:'2-digit'});
+  var parts=localStr.match(/(\d{4})\/(\d{2})\/(\d{2})/);
+  var localYear=parts?parseInt(parts[1]):date.getFullYear();
+  var localMonth=parts?parseInt(parts[2])-1:date.getMonth();
+  var localDay=parts?parseInt(parts[3]):date.getDate();
+  /* Build midnight UTC for the local date, then adjust by the timezone
+     offset so the Julian Day corresponds to local midnight */
+  var midnightLocal=new Date(Date.UTC(localYear,localMonth,localDay));
+  /* Adjust for timezone: subtract the offset so we get local midnight
+     expressed as a UTC timestamp. E.g., for EDT (UTC-4), local midnight
+     is 4:00 AM UTC, so we add 4 hours. */
+  var tzOffsetMin=getTzOffsetMinutes(date);
+  midnightLocal=new Date(midnightLocal.getTime()-tzOffsetMin*60000);
+  var jd=toJulianDay(midnightLocal);
   var T=(jd-2451545.0)/36525;
   var decl=sunDeclination(T);
   var eqTime=equationOfTime(T);
   /* Solar noon: minutes from UTC midnight = 720 - 4*longitude - 4*eqTime */
   var solarNoonMinutes=(720-4*lon-eqTime*4);
-  result.solarNoon=new Date(midnightUTC.getTime()+solarNoonMinutes*60000);
+  result.solarNoon=new Date(midnightLocal.getTime()+solarNoonMinutes*60000);
   /* Hour angle for sunrise/sunset (using -0.833 degrees for the Sun's
      center at the horizon, corrected for atmospheric refraction) */
   var haSunrise=calcHourAngle(decl,lat,-0.833);
   var haDawn=calcHourAngle(decl,lat,-6);  /* civil dawn/dusk: -6 degrees */
   if(!isNaN(haSunrise)){
-    result.sunrise=new Date(midnightUTC.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
-    result.sunset=new Date(midnightUTC.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
+    result.sunrise=new Date(midnightLocal.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
+    result.sunset=new Date(midnightLocal.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
   }
   if(!isNaN(haDawn)){
-    result.dawn=new Date(midnightUTC.getTime()+(solarNoonMinutes-haDawn*4)*60000);
-    result.dusk=new Date(midnightUTC.getTime()+(solarNoonMinutes+haDawn*4)*60000);
+    result.dawn=new Date(midnightLocal.getTime()+(solarNoonMinutes-haDawn*4)*60000);
+    result.dusk=new Date(midnightLocal.getTime()+(solarNoonMinutes+haDawn*4)*60000);
   }
   return result;
+}
+
+/* Get the timezone offset in minutes for a given date in CONFIG.tz.
+   Returns the offset such that local time = UTC + offset.
+   E.g., for EDT (UTC-4), returns -240. */
+function getTzOffsetMinutes(date){
+  try{
+    var utcDate=new Date(date.toLocaleString('en-US',{timeZone:'UTC'}));
+    var tzDate=new Date(date.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+    return Math.round((tzDate-utcDate)/60000);
+  }catch(e){
+    return date.getTimezoneOffset();
+  }
 }
 
 /* Calculate the hour angle (in degrees) for a given solar altitude angle. */
@@ -3064,9 +3092,10 @@ function fmtSunTime(date){
 }
 
 /* Format the time until a target date as a countdown string.
-   Returns things like "in 2h 15m", "in 45m", "in 40m", "passed 3h ago",
+   Returns things like "in 2h 15m", "in 45m", "in 40m", "3h ago",
    or "now" if within 1 minute. When under 1 hour, rounds to 5-minute
-   intervals (e.g. 43 min → "in 45m", 37 min → "in 35m"). */
+   intervals. All sun/moon events happen within 24h so we only show
+   hours and minutes (no days). */
 function fmtTimeUntil(target,now){
   if(!target||isNaN(target.getTime()))return '';
   var diffMs=target.getTime()-now.getTime();
@@ -3074,29 +3103,22 @@ function fmtTimeUntil(target,now){
   var minutes=Math.floor(absDiff/60000);
   var hours=Math.floor(minutes/60);
   var mins=minutes%60;
-  var days=Math.floor(hours/24);
   var sign=diffMs>0?'in ':'';
   var suffix=diffMs<0?' ago':'';
   if(absDiff<60000)return 'now';
-  if(days>0){
-    /* If there are days but less than 1 hour remaining, don't show 0h */
-    var remainingHours=hours%24;
-    if(remainingHours===0&&mins===0){
-      return sign+days+'d'+suffix;
-    }
-    if(remainingHours===0){
-      /* Less than 1 hour into the day - show just minutes (rounded to 5) */
-      var rounded5=Math.round(mins/5)*5;
-      return sign+days+'d '+rounded5+'m'+suffix;
-    }
-    return sign+days+'d '+remainingHours+'h'+suffix;
+  if(hours>=24){
+    /* 24+ hours: show as days+hours for events that are far out
+       (shouldn't normally happen for sun/moon events, but handle it) */
+    var days=Math.floor(hours/24);
+    var remHours=hours%24;
+    return sign+days+'d '+(remHours>0?remHours+'h':'')+suffix;
   }
   if(hours>0){
     return sign+hours+'h'+(mins>0?' '+mins+'m':'')+suffix;
   }
   /* Under 1 hour: round to 5-minute intervals */
   var roundedMins=Math.round(mins/5)*5;
-  if(roundedMins===0)roundedMins=5;  /* avoid showing "0m" */
+  if(roundedMins===0)roundedMins=5;
   return sign+roundedMins+'m'+suffix;
 }
 
