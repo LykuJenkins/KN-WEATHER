@@ -3172,6 +3172,41 @@ function calcMoonPositionAltAz(lat,lon,date){
   return {elevation:elevation,azimuth:azimuth};
 }
 
+/* Calculate moonrise and moonset times for a given lat/lon and date.
+   Samples the moon's elevation every 10 minutes over 24 hours and finds
+   the times when it crosses 0° (the horizon). Returns {moonrise, moonset}
+   as Date objects (or null if the moon doesn't rise/set in the 24h window). */
+function calcMoonRiseSet(lat,lon,date){
+  var result={moonrise:null,moonset:null};
+  var startTime=new Date(date);
+  startTime.setHours(0,0,0,0);  /* midnight local */
+  /* Sample every 10 minutes for 24 hours */
+  var samples=[];
+  for(var i=0;i<=144;i++){
+    var t=new Date(startTime.getTime()+i*10*60*1000);
+    var pos=calcMoonPositionAltAz(lat,lon,t);
+    samples.push({time:t,elev:pos.elevation});
+  }
+  /* Find sign changes (elevation crossing 0°) */
+  for(var i=0;i<samples.length-1;i++){
+    var e1=samples[i].elev;
+    var e2=samples[i+1].elev;
+    if((e1<0&&e2>=0)||((e1>=0&&e2<0))){
+      /* Linear interpolation to find the crossing time */
+      var frac=Math.abs(e1)/(Math.abs(e1)+Math.abs(e2));
+      var crossTime=new Date(samples[i].time.getTime()+frac*10*60*1000);
+      if(e1<0&&e2>=0){
+        /* Rising */
+        if(!result.moonrise||crossTime<result.moonrise)result.moonrise=crossTime;
+      }else{
+        /* Setting */
+        if(!result.moonset||crossTime<result.moonset)result.moonset=crossTime;
+      }
+    }
+  }
+  return result;
+}
+
 /* Refresh the Sunrise & Sunset panel for the currently-selected county. */
 function fSun(){
   var content=document.getElementById('sunContent');
@@ -3201,7 +3236,9 @@ function fSun(){
      - Cooling band (blue gradient) toward sunset
      - PoP (precipitation probability) as dashed overlay */
   var hourlyData=window.lastHourlyData||null;
-  var chartHtml=buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData);
+  /* Calculate moonrise and moonset for the moonrise/set tick marks */
+  var moonTimes=calcMoonRiseSet(lat,lon,now);
+  var chartHtml=buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes);
   /* Build the HTML */
   var html='<div class="sun-panel">'+
     '<div class="sun-county"><i class="fas fa-location-dot"></i> '+CUR_LOC_OBJ.label+' · '+CUR_LOC_OBJ.sub+' <span style="color:var(--t3);font-weight:400;font-size:9px">· All times '+tzShort+'</span></div>'+
@@ -3354,8 +3391,8 @@ function tempToColor(frac){
    The sun and moon travel ON the outer circle edge. Their position
    is determined by time-of-day relative to their respective "noon"
    (peak). The path is a perfect circle - no jagged lines. */
-function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
-  var W=340,H=340;
+function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
+  var W=380,H=380;  /* slightly larger to fit moonrise/set labels */
   var cx=W/2,cy=H/2;
   var clockR=140;  /* the clock circle radius - sun/moon travel on this edge */
   var tempR=clockR-30;  /* max radius for temperature curve (inside the clock) */
@@ -3559,6 +3596,38 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
       var duskXY=timeToClockXY(duskHfn);
       return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
         '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
+    })():'')+
+    /* Moonrise and Moonset tick marks on the outer edge of the clock.
+       These show when the moon rises (crosses horizon going up) and
+       sets (crosses horizon going down). Drawn as small purple markers
+       just outside the clock circle with labels. */
+    (moonTimes&&moonTimes.moonrise&&times.solarNoon?(function(){
+      var mrHfn=(moonTimes.moonrise.getTime()-times.solarNoon.getTime())/3600000;
+      var mrAngle=(mrHfn*15-90)*Math.PI/180;
+      var mrX1=cx+(clockR+2)*Math.cos(mrAngle);
+      var mrY1=cy+(clockR+2)*Math.sin(mrAngle);
+      var mrX2=cx+(clockR+10)*Math.cos(mrAngle);
+      var mrY2=cy+(clockR+10)*Math.sin(mrAngle);
+      var lblX=cx+(clockR+18)*Math.cos(mrAngle);
+      var lblY=cy+(clockR+18)*Math.sin(mrAngle);
+      return '<line x1="'+mrX1.toFixed(1)+'" y1="'+mrY1.toFixed(1)+'" x2="'+mrX2.toFixed(1)+'" y2="'+mrY2.toFixed(1)+'" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/>'+
+        '<circle cx="'+mrX2.toFixed(1)+'" cy="'+mrY2.toFixed(1)+'" r="2.5" fill="#c4b5fd"/>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+2).toFixed(1)+'" font-size="6" fill="#c4b5fd" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">MOONRISE</text>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+11).toFixed(1)+'" font-size="6" fill="#c4b5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonrise)+'</text>';
+    })():'')+
+    (moonTimes&&moonTimes.moonset&&times.solarNoon?(function(){
+      var msHfn=(moonTimes.moonset.getTime()-times.solarNoon.getTime())/3600000;
+      var msAngle=(msHfn*15-90)*Math.PI/180;
+      var msX1=cx+(clockR+2)*Math.cos(msAngle);
+      var msY1=cy+(clockR+2)*Math.sin(msAngle);
+      var msX2=cx+(clockR+10)*Math.cos(msAngle);
+      var msY2=cy+(clockR+10)*Math.sin(msAngle);
+      var lblX=cx+(clockR+18)*Math.cos(msAngle);
+      var lblY=cy+(clockR+18)*Math.sin(msAngle);
+      return '<line x1="'+msX1.toFixed(1)+'" y1="'+msY1.toFixed(1)+'" x2="'+msX2.toFixed(1)+'" y2="'+msY2.toFixed(1)+'" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round"/>'+
+        '<circle cx="'+msX2.toFixed(1)+'" cy="'+msY2.toFixed(1)+'" r="2.5" fill="#818cf8"/>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+2).toFixed(1)+'" font-size="6" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">MOONSET</text>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+11).toFixed(1)+'" font-size="6" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonset)+'</text>';
     })():'')+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
