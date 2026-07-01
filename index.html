@@ -603,7 +603,7 @@ body.capturing .mom-mode-toggle{display:none}
 .sun-arc-labels span:last-child{text-align:right}
 
 /* Sky chart (curved sun/moon path graph) */
-.sky-chart-wrap{margin-top:6px;padding:12px;background:rgba(0,0,0,.2);border-radius:var(--rs);border:1px solid var(--bdr)}
+.sky-chart-wrap{margin-top:6px;padding:12px;background:rgba(0,0,0,.2);border-radius:var(--rs);border:1px solid var(--bdr);overflow:hidden}
 .sky-chart{width:100%;height:auto;display:block;max-height:360px}
 .sky-chart-legend{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
 .sky-leg-item{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--t2);font-weight:600}
@@ -2723,60 +2723,26 @@ function screenshotPanel(panelId,btn){
   }
 
   Promise.all([brandLogoLoadPromise].concat(crossOriginImgs.map(convertImageToDataUrl))).then(function(){
-    /* Special handling for the Alert Polygon Map panel: html2canvas cannot
-       reliably capture Leaflet maps (CORS taint on tiles, transform desync
-       between tile pane and overlay pane, blank tiles after invalidateSize).
-       Instead, we snapshot the map onto a single composite canvas ourselves
-       (drawing tiles + vector overlay + markers), then replace the map
-       container's content with that canvas for the html2canvas capture.
-       This guarantees the map AND polygons render correctly in the screenshot. */
+    /* For the Alert Polygon Map panel: just let html2canvas capture the
+       map directly. CARTO tiles have crossOrigin:true set, so useCORS:true
+       in html2canvas handles them. The complex snapshot approach (fetching
+       tiles as data URLs) was causing blank maps and misplaced polygons.
+       We just invalidateSize() to ensure tiles are settled, then let
+       html2canvas do its thing. */
     var mapReadyPromise=Promise.resolve();
-    var mapSnapshotState=null;  /* {mapContainer, savedChildren, snapshotCanvas, snapshotWrapper} */
     if(panelId==='alertMap'&&typeof alertMapInstance!=='undefined'&&alertMapInstance){
       mapReadyPromise=new Promise(function(resolve){
         if(!alertMapInstance._loaded){resolve();return}
-        /* Invalidate size so tiles settle at the new panel width, then wait
-           for the 'load' event (fires when tiles finish repositioning) plus
-           a buffer. Then take the snapshot. */
         var done=false;
         function finish(){
           if(done)return;
           done=true;
-          setTimeout(async function(){
-            try{
-              var mapContainer=alertMapInstance.getContainer();
-              /* Snapshot the map onto a composite canvas (async - fetches
-                 tiles as data URLs to avoid canvas tainting) */
-              var snap=await snapshotLeafletMap(alertMapInstance);
-              if(snap){
-                /* Replace the map container's children with the snapshot
-                   canvas. We hide the original Leaflet panes (don't remove
-                   them - Leaflet would break) by wrapping: insert the
-                   snapshot canvas as the only visible child, hide all
-                   Leaflet panes via display:none. */
-                var leafletPanes=mapContainer.querySelectorAll('.leaflet-pane, .leaflet-control-container');
-                var savedDisplays=[];
-                leafletPanes.forEach(function(p){savedDisplays.push(p.style.display);p.style.display='none'});
-                /* Insert snapshot canvas as a direct child of the map container */
-                var wrapper=document.createElement('div');
-                wrapper.className='map-snapshot-wrapper';
-                wrapper.style.cssText='position:absolute;inset:0;z-index:1';
-                wrapper.appendChild(snap);
-                mapContainer.appendChild(wrapper);
-                mapSnapshotState={
-                  mapContainer:mapContainer,
-                  panes:leafletPanes,
-                  savedDisplays:savedDisplays,
-                  wrapper:wrapper
-                };
-              }
-            }catch(e){console.error('Map snapshot setup failed:',e)}
-            resolve();
-          },500);
+          /* Wait a bit for tiles to settle after invalidateSize */
+          setTimeout(resolve,800);
         }
         alertMapInstance.once('load',finish);
         alertMapInstance.invalidateSize();
-        setTimeout(finish,1500);  /* fallback */
+        setTimeout(finish,1500);
       });
     }
     mapReadyPromise.then(function(){
@@ -2817,13 +2783,6 @@ function screenshotPanel(panelId,btn){
       width:shotWidth,
       height:panel.scrollHeight
     }).then(function(canvas){
-      /* Restore map snapshot: remove the wrapper canvas and un-hide the
-         original Leaflet panes so the live map works again. */
-      if(mapSnapshotState){
-        if(mapSnapshotState.wrapper.parentNode)mapSnapshotState.wrapper.parentNode.removeChild(mapSnapshotState.wrapper);
-        mapSnapshotState.panes.forEach(function(p,i){p.style.display=mapSnapshotState.savedDisplays[i]||''});
-        mapSnapshotState=null;
-      }
       /* Restore iframes */
       iframeData.forEach(function(d){if(d.placeholder.parentNode)d.parent.replaceChild(d.iframe,d.placeholder)});
       /* Restore original image srcs */
@@ -2845,12 +2804,6 @@ function screenshotPanel(panelId,btn){
       showScreenshotPreview(dataUrl,title,panelId);
     }).catch(function(err){
       console.error('Screenshot error:',err);
-      /* Restore map snapshot on error too */
-      if(mapSnapshotState){
-        if(mapSnapshotState.wrapper.parentNode)mapSnapshotState.wrapper.parentNode.removeChild(mapSnapshotState.wrapper);
-        mapSnapshotState.panes.forEach(function(p,i){p.style.display=mapSnapshotState.savedDisplays[i]||''});
-        mapSnapshotState=null;
-      }
       /* Restore iframes */
       iframeData.forEach(function(d){if(d.placeholder.parentNode)d.parent.replaceChild(d.iframe,d.placeholder)});
       /* Restore original image srcs */
@@ -3596,12 +3549,18 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     }
   }
 
-  /* Build heat gradient segments using phase-based clock angles */
+  /* Build heat gradient segments using phase-based clock angles.
+     Sort by cycle angle (not time) so segments connect properly around
+     the circle. Don't wrap the last segment to the first. */
   var heatSegments='';
   if(tempPoints.length>1){
-    for(var i=0;i<tempPoints.length;i++){
+    /* Sort by sun cycle angle so segments go around the circle in order */
+    tempPoints.sort(function(a,b){
+      return sunCycleAngle(a.time)-sunCycleAngle(b.time);
+    });
+    for(var i=0;i<tempPoints.length-1;i++){
       var tp=tempPoints[i];
-      var tpNext=tempPoints[(i+1)%tempPoints.length];
+      var tpNext=tempPoints[i+1];
       var tempRange=tempMax-tempMin||1;
       var frac=(tp.temp-tempMin)/tempRange;
       var color=tempToColor(frac);
@@ -3687,28 +3646,30 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     heatSegments+
     /* Daylight ribbon - a thin band just inside the heat gradient that
        shows daylight vs night. Uses the sun's cycle phase for positioning
-       so it aligns with the sun's clock position. */
+       so it aligns with the sun's clock position. Daylight is shown from
+       dawn (when the sun reaches -6° elevation) to dusk (-6° again). */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
       var duskMs=times.dusk.getTime();
       var daylightRibbonR=clockR-14;
       var ribbonSegs='';
-      /* Draw 48 arc segments. Each segment covers 1/48 of the sun's
-         daily cycle. We sample timestamps evenly across the cycle. */
-      var cycleStartMs=times.sunrise?times.sunrise.getTime():times.solarNoon.getTime()-6*3600000;
-      var cycleEndMs=cycleStartMs+24*3600000;
-      for(var i=0;i<48;i++){
-        var t1Ms=cycleStartMs+(i/48)*24*3600000;
-        var t2Ms=cycleStartMs+((i+1)/48)*24*3600000;
+      /* Sample 72 segments for smoother gradient. Start from solar midnight
+         (the bottom of the cycle) and go forward 24 hours. */
+      var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()+12*3600000);
+      for(var i=0;i<72;i++){
+        var t1Ms=smMs+(i/72)*24*3600000;
+        var t2Ms=smMs+((i+1)/72)*24*3600000;
         var midMs=(t1Ms+t2Ms)/2;
-        /* Determine daylight intensity at midpoint */
+        /* Determine daylight intensity at midpoint.
+           Daylight = between dawn and dusk.
+           Intensity peaks at solar noon (sin curve). */
         var intensity;
         if(midMs>=dawnMs&&midMs<=duskMs){
-          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);
-          intensity=Math.sin(dayProgress*Math.PI);
+          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
+          intensity=Math.sin(dayProgress*Math.PI);  /* 0→1→0 */
         }else{
-          intensity=0;
+          intensity=0;  /* night */
         }
         var color;
         if(intensity>0){
