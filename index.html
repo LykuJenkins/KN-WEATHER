@@ -3549,31 +3549,38 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     }
   }
 
-  /* Build heat gradient segments using phase-based clock angles.
-     Sort by cycle angle (not time) so segments connect properly around
-     the circle. Don't wrap the last segment to the first. */
-  var heatSegments='';
+  /* Build heat gradient as a smooth continuous ring.
+     Instead of drawing separate arc segments (which look choppy), we
+     draw the full circle with a conic-like gradient. We interpolate
+     gradient color stops from the temperature data. */
+  var heatGradientStops='';
+  var heatCircleStroke='';
   if(tempPoints.length>1){
-    /* Sort by sun cycle angle so segments go around the circle in order */
+    /* Sort by sun cycle angle */
     tempPoints.sort(function(a,b){
       return sunCycleAngle(a.time)-sunCycleAngle(b.time);
     });
-    for(var i=0;i<tempPoints.length-1;i++){
+    /* Build gradient stops: map each temp point to a position 0-1
+       along the circle (0=top/noon, going clockwise) */
+    var tempRange=tempMax-tempMin||1;
+    for(var i=0;i<tempPoints.length;i++){
       var tp=tempPoints[i];
-      var tpNext=tempPoints[i+1];
-      var tempRange=tempMax-tempMin||1;
       var frac=(tp.temp-tempMin)/tempRange;
       var color=tempToColor(frac);
-      var a1=sunCycleAngle(tp.time);
-      var a2=sunCycleAngle(tpNext.time);
-      var x1=cx+clockR*Math.cos(a1);
-      var y1=cy+clockR*Math.sin(a1);
-      var x2=cx+clockR*Math.cos(a2);
-      var y2=cy+clockR*Math.sin(a2);
-      var angleDiff=Math.abs(a2-a1);
-      var largeArc=angleDiff>Math.PI?1:0;
-      heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.85" stroke-linecap="round"/>';
+      var angle=sunCycleAngle(tp.time);
+      /* Convert SVG angle to 0-1 position on the circle.
+         SVG angle 0 = right (3 o'clock), going clockwise.
+         We want 0 = top (12 o'clock). */
+      var deg=(angle*180/Math.PI+90+360)%360;
+      var pos=deg/360;
+      heatGradientStops+='<stop offset="'+(pos*100).toFixed(1)+'%" stop-color="'+color+'"/>';
     }
+    /* Create a unique gradient ID */
+    var gradId='heatGrad'+Date.now();
+    heatCircleStroke='<defs><linearGradient id="'+gradId+'" x1="0" y1="0" x2="1" y2="1">'+
+      heatGradientStops+
+      '</linearGradient></defs>'+
+      '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="none" stroke="url(#'+gradId+')" stroke-width="6" opacity="0.85"/>';
   }
 
   /* Build the SVG */
@@ -3642,8 +3649,8 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
         '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
     })():'')+
-    /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
-    heatSegments+
+    /* Heat gradient on the sun path (smooth continuous ring) */
+    heatCircleStroke+
     /* Daylight ribbon - a thin band just inside the heat gradient that
        shows daylight vs night. Uses the sun's cycle phase for positioning
        so it aligns with the sun's clock position. Daylight is shown from
