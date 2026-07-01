@@ -3612,6 +3612,13 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
   }
 
   /* Build the SVG */
+  /* Ring radii: heat ring is the outer band, daylight ring is the inner band.
+     Each is a donut (annulus) clipped via clipPath so gradients can't overflow. */
+  var heatRingOuter=clockR+3;   /* outer edge of heat ring */
+  var heatRingInner=clockR-3;   /* inner edge of heat ring (width=6) */
+  var daylightRingOuter=clockR-11; /* outer edge of daylight ring */
+  var daylightRingInner=clockR-17; /* inner edge of daylight ring (width=6) */
+
   var svg='<div class="sky-chart-wrap">'+
     '<svg class="sky-chart" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
     '<defs>'+
@@ -3634,6 +3641,14 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         '<stop offset="0%" stop-color="#ef4444" stop-opacity="0.25"/>'+
         '<stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>'+
       '</radialGradient>'+
+      /* ClipPath for heat ring: donut shape (outer circle minus inner circle) */
+      '<clipPath id="heatRingClip">'+
+        '<path d="M '+(cx-heatRingOuter)+','+cy+' A '+heatRingOuter+','+heatRingOuter+' 0 1,0 '+(cx+heatRingOuter)+','+cy+' A '+heatRingOuter+','+heatRingOuter+' 0 1,0 '+(cx-heatRingOuter)+','+cy+' Z M '+(cx-heatRingInner)+','+cy+' A '+heatRingInner+','+heatRingInner+' 0 1,1 '+(cx+heatRingInner)+','+cy+' A '+heatRingInner+','+heatRingInner+' 0 1,1 '+(cx-heatRingInner)+','+cy+' Z" fill-rule="evenodd"/>'+
+      '</clipPath>'+
+      /* ClipPath for daylight ring: donut shape */
+      '<clipPath id="daylightRingClip">'+
+        '<path d="M '+(cx-daylightRingOuter)+','+cy+' A '+daylightRingOuter+','+daylightRingOuter+' 0 1,0 '+(cx+daylightRingOuter)+','+cy+' A '+daylightRingOuter+','+daylightRingOuter+' 0 1,0 '+(cx-daylightRingOuter)+','+cy+' Z M '+(cx-daylightRingInner)+','+cy+' A '+daylightRingInner+','+daylightRingInner+' 0 1,1 '+(cx+daylightRingInner)+','+cy+' A '+daylightRingInner+','+daylightRingInner+' 0 1,1 '+(cx-daylightRingInner)+','+cy+' Z" fill-rule="evenodd"/>'+
+      '</clipPath>'+
     '</defs>'+
     /* Clock face background */
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="url(#clockBg)" opacity="0.3"/>'+
@@ -3677,10 +3692,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
         '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
     })():'')+
-    /* Heat gradient on the sun path (smooth arc segments) */
-    heatSegments+
-    /* Daylight ribbon - perfectly smooth gradient ring.
-       200 segments for maximum smoothness. stroke-width=5, opacity=1. */
+    /* Heat gradient ring (clipped to outer donut band so it can't overflow) */
+    '<g clip-path="url(#heatRingClip)">'+heatSegments+'</g>'+
+    /* Daylight ribbon (clipped to inner donut band) */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
@@ -3728,7 +3742,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       var nowRX=cx+daylightRibbonR*Math.cos(nowAngle);
       var nowRY=cy+daylightRibbonR*Math.sin(nowAngle);
       ribbonSegs+='<circle cx="'+nowRX.toFixed(1)+'" cy="'+nowRY.toFixed(1)+'" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" opacity="0.95"/>';
-      return ribbonSegs;
+      return '<g clip-path="url(#daylightRingClip)">'+ribbonSegs+'</g>';
     })()+
     /* Thermal peak marker (hottest hour) with temperature AND time label */
     (thermalPeakT?(function(){
