@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KN Sun Clock - Standalone Reference</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0e0e15;color:#e4e4ec;font-family:'Inter',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+.sun-panel{max-width:400px;width:100%}
+.sun-county{font-size:11px;font-weight:700;color:#a855f7;margin-bottom:10px;display:flex;align-items:center;gap:5px}
+.sun-county i{font-size:10px}
+.sky-chart-wrap{margin-top:6px;padding:12px;background:rgba(0,0,0,.2);border-radius:8px;border:1px solid #2a2a3e;overflow:hidden}
+.sky-chart{width:100%;height:auto;display:block;max-height:380px}
+.sky-chart-legend{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
+.sky-leg-item{display:flex;align-items:center;gap:4px;font-size:9px;color:#9898a8;font-weight:600}
+.sky-leg-dot{width:10px;height:3px;border-radius:2px;flex-shrink:0}
+.sky-leg-time{margin-left:auto;font-size:9px;color:#5c5c6e;font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<div class="sun-panel">
+  <div class="sun-county"><i>📍</i> Van Buren Co · Paw Paw · All times EDT</div>
+  <div id="chartContainer"></div>
+</div>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   KN SUN CLOCK - STANDALONE REFERENCE FILE
+   This is the known-good design. Use as backup/reference when modifying
+   the main index.html sun chart.
+   
+   Design:
+   - Outer ring: Heat gradient (temperature, smooth continuous)
+   - Inner ring: Daylight ribbon (day/night gradient, smooth continuous)
+   - Center: Analog sundial clock with Roman numerals
+   - Sun dot travels on the outer ring based on sun cycle phase
+   - Moon dot travels on inner ring based on moon cycle phase
+   - Fixed labels: SOLAR NOON (top), SUNSET (right), SOLAR MIDNIGHT (bottom), SUNRISE (left)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var CONFIG={tz:'America/New_York'};
+var LOCATIONS=[
+  {key:'vanburen',label:'Van Buren Co',sub:'Paw Paw',lat:42.221,lon:-85.876},
+  {key:'allegan',label:'Allegan Co',sub:'Allegan',lat:42.532,lon:-85.86},
+  {key:'kalamazoo',label:'Kalamazoo Co',sub:'Kalamazoo',lat:42.283,lon:-85.574}
+];
+var CUR_LOC_OBJ=LOCATIONS[0]; // Van Buren
+
+/* ── Solar calculations (NOAA algorithm) ─────────────────────────────────── */
+function toJulianDay(date){return date.getTime()/86400000+2440587.5}
+function sunGeomMeanLong(T){var L0=280.46646+T*(36000.76983+T*0.0003032);return L0%360}
+function sunGeomMeanAnomaly(T){return 357.52911+T*(35999.05029-0.0001537*T)}
+function earthEccentricity(T){return 0.016708634-T*(0.000042037+0.0000001267*T)}
+function sunEqOfCenter(T){var M=sunGeomMeanAnomaly(T);var Mrad=M*Math.PI/180;var C=Math.sin(Mrad)*(1.914602-T*(0.004817+0.000014*T))+Math.sin(2*Mrad)*(0.019993-0.000101*T)+Math.sin(3*Mrad)*0.000289;return C}
+function sunTrueLong(T){return sunGeomMeanLong(T)+sunEqOfCenter(T)}
+function sunApparentLong(T){var L0=sunTrueLong(T);var omega=125.04-1934.136*T;return L0-0.00569-0.00478*Math.sin(omega*Math.PI/180)}
+function meanObliquity(T){var seconds=21.448-T*(46.8150+T*(0.00059-T*0.001813));return 23.0+seconds/3600}
+function correctedObliquity(T){var e0=meanObliquity(T);var omega=125.04-1934.136*T;return e0+0.00256*Math.cos(omega*Math.PI/180)}
+function sunDeclination(T){var lam=sunApparentLong(T);var e=correctedObliquity(T);return Math.asin(Math.sin(e*Math.PI/180)*Math.sin(lam*Math.PI/180))*180/Math.PI}
+function equationOfTime(T){var epsilon=correctedObliquity(T);var L0=sunGeomMeanLong(T);var e=earthEccentricity(T);var m=sunGeomMeanAnomaly(T);var y=Math.tan(epsilon*Math.PI/360);y*=y;var sin2L0=Math.sin(2*L0*Math.PI/180);var cos2L0=Math.cos(2*L0*Math.PI/180);var sin4L0=Math.sin(4*L0*Math.PI/180);var sin1_5m=Math.sin(2*m*Math.PI/180);var sinm=Math.sin(m*Math.PI/180);var Etime=y*sin2L0-2*e*sinm+4*e*y*sinm*cos2L0-0.5*y*y*sin4L0-1.25*e*e*sin1_5m;return Etime*180/Math.PI/4}
+function calcHourAngle(decl,lat,altAngle){var latRad=lat*Math.PI/180;var declRad=decl*Math.PI/180;var altRad=altAngle*Math.PI/180;var cosHA=(Math.sin(altRad)-Math.sin(latRad)*Math.sin(declRad))/(Math.cos(latRad)*Math.cos(declRad));cosHA=Math.max(-1,Math.min(1,cosHA));return Math.acos(cosHA)*180/Math.PI}
+
+function calcSunTimes(lat,lon,date){
+  var result={sunrise:null,sunset:null,solarNoon:null,dawn:null,dusk:null};
+  var localStr=date.toLocaleString('en-US',{timeZone:CONFIG.tz,year:'numeric',month:'2-digit',day:'2-digit'});
+  var parts=localStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  var localMonth=parts?parseInt(parts[1])-1:date.getMonth();
+  var localDay=parts?parseInt(parts[2]):date.getDate();
+  var localYear=parts?parseInt(parts[3]):date.getFullYear();
+  var midnightUTC=new Date(Date.UTC(localYear,localMonth,localDay));
+  var jd=toJulianDay(midnightUTC);
+  var T=(jd-2451545.0)/36525;
+  var decl=sunDeclination(T);
+  var eqTime=equationOfTime(T);
+  var solarNoonMinutes=(720-4*lon-eqTime*4);
+  result.solarNoon=new Date(midnightUTC.getTime()+solarNoonMinutes*60000);
+  var haSunrise=calcHourAngle(decl,lat,-0.833);
+  var haDawn=calcHourAngle(decl,lat,-6);
+  if(!isNaN(haSunrise)){
+    result.sunrise=new Date(midnightUTC.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
+    result.sunset=new Date(midnightUTC.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
+  }
+  if(!isNaN(haDawn)){
+    result.dawn=new Date(midnightUTC.getTime()+(solarNoonMinutes-haDawn*4)*60000);
+    result.dusk=new Date(midnightUTC.getTime()+(solarNoonMinutes+haDawn*4)*60000);
+  }
+  return result;
+}
+
+function calcSunPosition(lat,lon,date){
+  var jd=toJulianDay(date);
+  var T=(jd-2451545.0)/36525;
+  var decl=sunDeclination(T);
+  var eqTime=equationOfTime(T);
+  var minutesUTC=date.getUTCHours()*60+date.getUTCMinutes()+date.getUTCSeconds()/60;
+  var trueSolarTime=(minutesUTC+eqTime+4*lon)%1440;
+  var ha=trueSolarTime/4-180;
+  var latRad=lat*Math.PI/180;
+  var declRad=decl*Math.PI/180;
+  var haRad=ha*Math.PI/180;
+  var sinElev=Math.sin(latRad)*Math.sin(declRad)+Math.cos(latRad)*Math.cos(declRad)*Math.cos(haRad);
+  var elevation=Math.asin(sinElev)*180/Math.PI;
+  var cosAz=(Math.sin(declRad)-Math.sin(latRad)*sinElev)/(Math.cos(latRad)*Math.cos(elevation*Math.PI/180));
+  cosAz=Math.max(-1,Math.min(1,cosAz));
+  var azimuth=Math.acos(cosAz)*180/Math.PI;
+  if(ha>0)azimuth=360-azimuth;
+  return {elevation:elevation,azimuth:azimuth};
+}
+
+/* ── Moon calculations ───────────────────────────────────────────────────── */
+function calcMoonPhase(date){
+  var jd=date.getTime()/86400000+2440587.5;
+  var synodic=29.530588853;
+  var daysSinceNew=jd-2451550.1;
+  var newMoons=Math.floor(daysSinceNew/synodic);
+  var phase=(daysSinceNew/synodic)-newMoons;
+  if(phase<0)phase+=1;
+  var age=phase*synodic;
+  var illumination=(1-Math.cos(2*Math.PI*phase))/2;
+  var name;
+  if(phase<0.0335||phase>=0.9665)name='New Moon';
+  else if(phase<0.2165)name='Waxing Crescent';
+  else if(phase<0.2835)name='First Quarter';
+  else if(phase<0.4665)name='Waxing Gibbous';
+  else if(phase<0.5335)name='Full Moon';
+  else if(phase<0.7165)name='Waning Gibbous';
+  else if(phase<0.7835)name='Last Quarter';
+  else name='Waning Crescent';
+  return {phase:phase,age:age,illumination:illumination,name:name};
+}
+
+function calcMoonPosition(date){
+  var jd=date.getTime()/86400000+2440587.5;
+  var T=(jd-2451545.0)/36525;
+  var L=218.316+481267.8813*T;
+  var M=134.963+477198.8676*T;
+  var F=93.272+483202.0175*T;
+  var Ms=357.529+35999.0503*T;
+  var lambda=L+6.289*Math.sin(M*Math.PI/180)+1.274*Math.sin((2*M-2*Ms)*Math.PI/180)+0.658*Math.sin(2*Ms*Math.PI/180);
+  var beta=5.128*Math.sin(F*Math.PI/180);
+  var epsilon=23.439-0.0004*T;
+  var decl=Math.asin(Math.sin(epsilon*Math.PI/180)*Math.sin(lambda*Math.PI/180)*Math.cos(beta*Math.PI/180)+Math.cos(epsilon*Math.PI/180)*Math.sin(beta*Math.PI/180))*180/Math.PI;
+  var ra=Math.atan2(Math.sin(lambda*Math.PI/180)*Math.cos(epsilon*Math.PI/180)-Math.tan(beta*Math.PI/180)*Math.sin(epsilon*Math.PI/180),Math.cos(lambda*Math.PI/180))*180/Math.PI;
+  if(ra<0)ra+=360;
+  return {declination:decl,ra:ra};
+}
+
+function calcMoonPositionAltAz(lat,lon,date){
+  var pos=calcMoonPosition(date);
+  var jd=date.getTime()/86400000+2440587.5;
+  var T=(jd-2451545.0)/36525;
+  var gmst=280.46061837+360.98564736629*(jd-2451545.0)+0.000387933*T*T;
+  gmst=gmst%360;if(gmst<0)gmst+=360;
+  var lst=gmst+lon;
+  var ha=lst-pos.ra;
+  var latRad=lat*Math.PI/180;
+  var declRad=pos.declination*Math.PI/180;
+  var haRad=ha*Math.PI/180;
+  var sinElev=Math.sin(latRad)*Math.sin(declRad)+Math.cos(latRad)*Math.cos(declRad)*Math.cos(haRad);
+  var elevation=Math.asin(Math.max(-1,Math.min(1,sinElev)))*180/Math.PI;
+  var cosAz=(Math.sin(declRad)-Math.sin(latRad)*sinElev)/(Math.cos(latRad)*Math.cos(elevation*Math.PI/180));
+  cosAz=Math.max(-1,Math.min(1,cosAz));
+  var azimuth=Math.acos(cosAz)*180/Math.PI;
+  if(Math.sin(haRad)>0)azimuth=360-azimuth;
+  return {elevation:elevation,azimuth:azimuth};
+}
+
+function calcMoonRiseSet(lat,lon,date){
+  var result={moonrise:null,moonset:null};
+  var startTime=new Date(date);startTime.setHours(0,0,0,0);
+  var samples=[];
+  for(var i=0;i<=144;i++){
+    var t=new Date(startTime.getTime()+i*10*60*1000);
+    var pos=calcMoonPositionAltAz(lat,lon,t);
+    samples.push({time:t,elev:pos.elevation});
+  }
+  for(var i=0;i<samples.length-1;i++){
+    var e1=samples[i].elev,e2=samples[i+1].elev;
+    if((e1<0&&e2>=0)||(e1>=0&&e2<0)){
+      var frac=Math.abs(e1)/(Math.abs(e1)+Math.abs(e2));
+      var crossTime=new Date(samples[i].time.getTime()+frac*10*60*1000);
+      if(e1<0&&e2>=0){if(!result.moonrise||crossTime<result.moonrise)result.moonrise=crossTime}
+      else{if(!result.moonset||crossTime<result.moonset)result.moonset=crossTime}
+    }
+  }
+  return result;
+}
+
+/* ── Temperature to color ────────────────────────────────────────────────── */
+function tempToColor(frac){
+  frac=Math.max(0,Math.min(1,frac));
+  var stops=[
+    {f:0.0,r:30,g:64,b:175},
+    {f:0.2,r:56,g:189,b:248},
+    {f:0.4,r:34,g:197,b:94},
+    {f:0.6,r:251,g:191,b:36},
+    {f:0.8,r:249,g:115,b:22},
+    {f:1.0,r:220,g:38,b:38}
+  ];
+  for(var i=0;i<stops.length-1;i++){
+    if(frac>=stops[i].f&&frac<=stops[i+1].f){
+      var range=stops[i+1].f-stops[i].f||1;
+      var t=(frac-stops[i].f)/range;
+      return 'rgb('+Math.round(stops[i].r+(stops[i+1].r-stops[i].r)*t)+','+Math.round(stops[i].g+(stops[i+1].g-stops[i].g)*t)+','+Math.round(stops[i].b+(stops[i+1].b-stops[i].b)*t)+')';
+    }
+  }
+  return 'rgb(220,38,38)';
+}
+
+/* ── Time formatting ─────────────────────────────────────────────────────── */
+function fmtSunTime(date){
+  if(!date||isNaN(date.getTime()))return '--:--';
+  return date.toLocaleTimeString('en-US',{timeZone:CONFIG.tz,hour:'numeric',minute:'2-digit',hour12:true});
+}
+
+/* ── Mock hourly data for testing ────────────────────────────────────────── */
+function generateMockHourly(now,solarNoonT){
+  var hourly={time:[],temperature_2m:[]};
+  for(var i=-12;i<=24;i++){
+    var t=new Date(now.getTime()+i*3600000);
+    hourly.time.push(t.toISOString());
+    // Simulate temperature: peak ~3h after solar noon, min ~1h before sunrise
+    var hfn=(t.getTime()-solarNoonT)/3600000;
+    var temp=75+20*Math.exp(-Math.pow((hfn-3)/5,2)); // Gaussian peak at 3h past noon
+    hourly.temperature_2m.push(Math.round(temp));
+  }
+  return hourly;
+}
+
+/* ── Build the sun clock chart ───────────────────────────────────────────── */
+function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
+  var W=340,H=340;
+  var cx=W/2,cy=H/2;
+  var clockR=140;
+  var tempR=clockR-30;
+
+  /* Solar midnight: relative to now */
+  var solarMidnight;
+  if(times.solarNoon){
+    if(now.getTime()<times.solarNoon.getTime()){
+      solarMidnight=new Date(times.solarNoon.getTime()-12*3600000);
+    }else{
+      solarMidnight=new Date(times.solarNoon.getTime()+12*3600000);
+    }
+  }else{solarMidnight=null}
+
+  /* Sun cycle angle: maps timestamp to clock position based on 4 phases */
+  function sunCycleAngle(t){
+    if(!times.solarNoon)return 270*Math.PI/180;
+    var tMs=t.getTime();
+    var snMs=times.solarNoon.getTime();
+    var srMs=times.sunrise?times.sunrise.getTime():snMs-6*3600000;
+    var ssMs=times.sunset?times.sunset.getTime():snMs+6*3600000;
+    var smMs=solarMidnight?solarMidnight.getTime():snMs+12*3600000;
+    var ssEffMs=ssMs;
+    if(tMs<srMs&&ssMs>snMs)ssEffMs=ssMs-24*3600000;
+    // Phase 1: sunrise → solar noon (180° → 270°)
+    if(tMs>=srMs&&tMs<snMs){var p=(tMs-srMs)/(snMs-srMs);return(180+p*90)*Math.PI/180}
+    // Phase 2: solar noon → sunset (270° → 360°)
+    if(tMs>=snMs&&tMs<ssEffMs){var p=(tMs-snMs)/(ssEffMs-snMs);return(270+p*90)*Math.PI/180}
+    // Phase 3: sunset → solar midnight (0° → 90°)
+    if(tMs>=ssEffMs&&tMs<smMs){var p=(tMs-ssEffMs)/(smMs-ssEffMs);return(p*90)*Math.PI/180}
+    // Phase 4: solar midnight → sunrise (90° → 180°)
+    var srNextMs=srMs;if(srNextMs<smMs)srNextMs+=24*3600000;
+    if(tMs>=smMs&&tMs<srNextMs){var p=(tMs-smMs)/(srNextMs-smMs);return(90+p*90)*Math.PI/180}
+    var smPrevMs=smMs-24*3600000;
+    if(tMs>=smPrevMs&&tMs<srMs){var p=(tMs-smPrevMs)/(srMs-smPrevMs);return(90+p*90)*Math.PI/180}
+    return 270*Math.PI/180;
+  }
+  function sunCycleXY(t){var a=sunCycleAngle(t);return{x:cx+clockR*Math.cos(a),y:cy+clockR*Math.sin(a)}}
+
+  /* Sun path circle */
+  var sunPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.4"/>';
+  var moonPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockR-8)+'" fill="none" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4" stroke-dasharray="4,2"/>';
+
+  /* Current sun position */
+  var sunXY=sunCycleXY(now);
+
+  /* Current moon position */
+  var nowT=now.getTime();
+  var moonPeakT=nowT,moonPeakElev=-90;
+  for(var i=0;i<96;i++){
+    var t=nowT+i*15*60*1000;
+    var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
+    if(p.elevation>moonPeakElev){moonPeakElev=p.elevation;moonPeakT=t}
+  }
+  function moonCycleAngle(t){
+    var tMs=t.getTime();
+    var lnMs=moonPeakT;
+    var lmMs=lnMs+12*3600000;
+    var mrMs=moonTimes&&moonTimes.moonrise?moonTimes.moonrise.getTime():lnMs-6*3600000;
+    var msMs=moonTimes&&moonTimes.moonset?moonTimes.moonset.getTime():lnMs+6*3600000;
+    if(msMs<lnMs)msMs+=24*3600000;
+    if(lmMs<msMs)lmMs+=24*3600000;
+    var mrAdj=mrMs;if(mrAdj>lnMs)mrAdj-=24*3600000;
+    if(tMs>=mrAdj&&tMs<lnMs){var p=(tMs-mrAdj)/(lnMs-mrAdj);return(180+p*90)*Math.PI/180}
+    if(tMs>=lnMs&&tMs<msMs){var p=(tMs-lnMs)/(msMs-lnMs);return(270+p*90)*Math.PI/180}
+    var lmAdj=lmMs;if(lmAdj<msMs)lmAdj+=24*3600000;
+    if(tMs>=msMs&&tMs<lmAdj){var p=(tMs-msMs)/(lmAdj-msMs);return(p*90)*Math.PI/180}
+    var mrNext=mrAdj+24*3600000;
+    if(tMs>=lmAdj&&tMs<mrNext){var p=(tMs-lmAdj)/(mrNext-lmAdj);return(90+p*90)*Math.PI/180}
+    var lmPrev=lmAdj-24*3600000;
+    if(tMs>=lmPrev&&tMs<mrAdj){var p=(tMs-lmPrev)/(mrAdj-lmPrev);return(90+p*90)*Math.PI/180}
+    return 270*Math.PI/180;
+  }
+  var moonR=clockR-8;
+  var moonA=moonCycleAngle(now);
+  var moonXY={x:cx+moonR*Math.cos(moonA),y:cy+moonR*Math.sin(moonA)};
+  var sunBelow=pos.elevation<0;
+  var moonBelow=moonPos.elevation<0;
+
+  /* Build temperature data from hourly */
+  var tempPoints=[];
+  var thermalPeakT=null,thermalPeakTemp=-999;
+  var thermalMinT=null,thermalMinTemp=999;
+  var tempMin=999,tempMax=-999;
+  if(hourlyData&&hourlyData.time&&hourlyData.temperature_2m){
+    var nowMs=now.getTime();
+    for(var i=0;i<hourlyData.time.length;i++){
+      var hT=new Date(hourlyData.time[i]);
+      var hMs=hT.getTime();
+      if(hMs>=nowMs-3600000&&hMs<=nowMs+24*3600000){
+        var temp=hourlyData.temperature_2m[i];
+        if(temp!=null){
+          tempPoints.push({time:hT,temp:temp});
+          if(temp<tempMin)tempMin=temp;
+          if(temp>tempMax){tempMax=temp;thermalPeakT=hT;thermalPeakTemp=temp}
+          if(temp<thermalMinTemp){thermalMinTemp=temp;thermalMinT=hT}
+        }
+      }
+    }
+  }
+
+  /* ══ HEAT GRADIENT: Smooth continuous ring ════════════════════════════════
+     Use 30 sub-steps per hour with full opacity and butt line caps.
+     Each segment is a fine arc colored by interpolated temperature. */
+  var heatSegments='';
+  if(tempPoints.length>1){
+    tempPoints.sort(function(a,b){return sunCycleAngle(a.time)-sunCycleAngle(b.time)});
+    var tempRange=tempMax-tempMin||1;
+    var subSteps=30;
+    for(var i=0;i<tempPoints.length-1;i++){
+      var tp=tempPoints[i],tpNext=tempPoints[i+1];
+      for(var s=0;s<subSteps;s++){
+        var f1=s/subSteps,f2=(s+1)/subSteps;
+        var temp1=tp.temp+(tpNext.temp-tp.temp)*f1;
+        var t1Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f1;
+        var t2Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f2;
+        var frac1=(temp1-tempMin)/tempRange;
+        var color=tempToColor(frac1);
+        var a1=sunCycleAngle(new Date(t1Ms));
+        var a2=sunCycleAngle(new Date(t2Ms));
+        var x1=cx+clockR*Math.cos(a1),y1=cy+clockR*Math.sin(a1);
+        var x2=cx+clockR*Math.cos(a2),y2=cy+clockR*Math.sin(a2);
+        var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
+        heatSegments+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="7" opacity="1"/>';
+      }
+    }
+  }
+
+  /* ══ DAYLIGHT RIBBON: Smooth continuous ring ═════════════════════════════
+     200 segments. Daylight from dawn to dusk with color transitions. */
+  var daylightRibbon=(function(){
+    if(!times.dawn||!times.dusk||!times.solarNoon)return '';
+    var dawnMs=times.dawn.getTime(),duskMs=times.dusk.getTime();
+    var dlr=clockR-14;
+    var segs='';
+    var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()+12*3600000);
+    var sc=200;
+    for(var i=0;i<sc;i++){
+      var t1Ms=smMs+(i/sc)*24*3600000;
+      var t2Ms=smMs+((i+1)/sc)*24*3600000;
+      var midMs=(t1Ms+t2Ms)/2;
+      var isDay=midMs>=dawnMs&&midMs<=duskMs;
+      var color;
+      if(isDay){
+        var dp=(midMs-dawnMs)/(duskMs-dawnMs);
+        if(dp<0.15){var t=dp/0.15;color='rgb('+Math.round(30+t*225)+','+Math.round(40+t*180)+','+Math.round(100-t*100)+')'}
+        else if(dp<0.5){color='rgb(255,220,0)'}
+        else if(dp<0.85){var t=(dp-0.5)/0.35;color='rgb(255,'+Math.round(180-t*120)+',0)'}
+        else{var t=(dp-0.85)/0.15;color='rgb('+Math.round(255-t*100)+','+Math.round(60-t*40)+','+Math.round(0+t*60)+')'}
+      }else{color='#0a0a1a'}
+      var a1=sunCycleAngle(new Date(t1Ms)),a2=sunCycleAngle(new Date(t2Ms));
+      var x1=cx+dlr*Math.cos(a1),y1=cy+dlr*Math.sin(a1);
+      var x2=cx+dlr*Math.cos(a2),y2=cy+dlr*Math.sin(a2);
+      var la=Math.abs(a2-a1)>Math.PI?1:0;
+      segs+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+dlr+','+dlr+' 0 '+la+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="5" opacity="1"/>';
+    }
+    /* Current time marker */
+    var na=sunCycleAngle(now);
+    segs+='<circle cx="'+(cx+dlr*Math.cos(na)).toFixed(1)+'" cy="'+(cy+dlr*Math.sin(na)).toFixed(1)+'" r="3.5" fill="#fff" stroke="#000" stroke-width="1" opacity="0.95"/>';
+    return segs;
+  })();
+
+  /* ══ ANALOG SUNDIAL CLOCK ═════════════════════════════════════════════════ */
+  var clockFaceR=clockR-55;
+  var clockSvg='<defs>'+
+    '<radialGradient id="sundialBg" cx="0.5" cy="0.5" r="0.5">'+
+      '<stop offset="0%" stop-color="#2e1065"/>'+
+      '<stop offset="70%" stop-color="#1e1b4b"/>'+
+      '<stop offset="100%" stop-color="#0e0a1f"/>'+
+    '</radialGradient>'+
+    '<linearGradient id="gnomonGrad" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0%" stop-color="#fb923c"/>'+
+      '<stop offset="100%" stop-color="#a855f7"/>'+
+    '</linearGradient>'+
+    '</defs>';
+  clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="url(#sundialBg)" stroke="#a855f7" stroke-width="1.5"/>';
+  clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockFaceR-2)+'" fill="none" stroke="#6d28d9" stroke-width="0.5"/>';
+  /* Hour tick marks */
+  for(var h=0;h<12;h++){
+    var ta=(h*30-90)*Math.PI/180;
+    var isMaj=h%3===0;
+    var tl=isMaj?10:6,tw=isMaj?2:1,tc=isMaj?'#fb923c':'#7c3aed';
+    clockSvg+='<line x1="'+(cx+(clockFaceR-tl)*Math.cos(ta)).toFixed(1)+'" y1="'+(cy+(clockFaceR-tl)*Math.sin(ta)).toFixed(1)+'" x2="'+(cx+clockFaceR*Math.cos(ta)).toFixed(1)+'" y2="'+(cy+clockFaceR*Math.sin(ta)).toFixed(1)+'" stroke="'+tc+'" stroke-width="'+tw+'" stroke-linecap="round"/>';
+  }
+  /* Minute tick marks */
+  for(var m=0;m<60;m++){
+    if(m%5===0)continue;
+    var mta=(m*6-90)*Math.PI/180;
+    clockSvg+='<line x1="'+(cx+(clockFaceR-3)*Math.cos(mta)).toFixed(1)+'" y1="'+(cy+(clockFaceR-3)*Math.sin(mta)).toFixed(1)+'" x2="'+(cx+clockFaceR*Math.cos(mta)).toFixed(1)+'" y2="'+(cy+clockFaceR*Math.sin(mta)).toFixed(1)+'" stroke="#4c1d95" stroke-width="0.3"/>';
+  }
+  /* Roman numerals */
+  var roman=['XII','I','II','III','IV','V','VI','VII','VIII','IX','X','XI'];
+  for(var r=0;r<12;r++){
+    var ra=(r*30-90)*Math.PI/180;
+    var rr=clockFaceR-16;
+    var isMR=r%3===0;
+    clockSvg+='<text x="'+(cx+rr*Math.cos(ra)).toFixed(1)+'" y="'+(cy+rr*Math.sin(ra)+3).toFixed(1)+'" font-size="'+(isMR?9:7)+'" fill="'+(isMR?'#fb923c':'#c084fc')+'" font-family="Georgia,serif" font-weight="'+(isMR?'700':'500')+'" text-anchor="middle">'+roman[r]+'</text>';
+  }
+  /* Clock hands */
+  var nowEDT=new Date(now.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+  var hours=nowEDT.getHours()%12,minutes=nowEDT.getMinutes(),seconds=nowEDT.getSeconds();
+  var ha=((hours+minutes/60)*30-90)*Math.PI/180;
+  var hl=clockFaceR*0.55;
+  var hx=cx+hl*Math.cos(ha),hy=cy+hl*Math.sin(ha);
+  var pa=ha+Math.PI/2,bw=4;
+  clockSvg+='<polygon points="'+(cx+bw*Math.cos(pa)).toFixed(1)+','+(cy+bw*Math.sin(pa)).toFixed(1)+' '+(cx-bw*Math.cos(pa)).toFixed(1)+','+(cy-bw*Math.sin(pa)).toFixed(1)+' '+hx.toFixed(1)+','+hy.toFixed(1)+'" fill="url(#gnomonGrad)" stroke="#7c3aed" stroke-width="0.5"/>';
+  var ma=((minutes+seconds/60)*6-90)*Math.PI/180;
+  var ml=clockFaceR*0.8;
+  clockSvg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+(cx+ml*Math.cos(ma)).toFixed(1)+'" y2="'+(cy+ml*Math.sin(ma)).toFixed(1)+'" stroke="#fb923c" stroke-width="1.5" stroke-linecap="round"/>';
+  clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="#7c3aed" stroke="#fb923c" stroke-width="1"/>';
+  clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="2" fill="#4c1d95"/>';
+
+  /* Moonrise/moonset markers on clock face */
+  if(moonTimes&&moonTimes.moonrise&&moonTimes.moonset){
+    var mrEDT=new Date(moonTimes.moonrise.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+    var msEDT=new Date(moonTimes.moonset.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+    var mrH12=(mrEDT.getHours()%12)+mrEDT.getMinutes()/60;
+    var msH12=(msEDT.getHours()%12)+msEDT.getMinutes()/60;
+    var mrCA=(mrH12/12*360-90)*Math.PI/180;
+    var msCA=(msH12/12*360-90)*Math.PI/180;
+    // Moonrise marker
+    var mrTX1=cx+(clockFaceR-4)*Math.cos(mrCA),mrTY1=cy+(clockFaceR-4)*Math.sin(mrCA);
+    var mrTX2=cx+(clockFaceR-12)*Math.cos(mrCA),mrTY2=cy+(clockFaceR-12)*Math.sin(mrCA);
+    clockSvg+='<line x1="'+mrTX1.toFixed(1)+'" y1="'+mrTY1.toFixed(1)+'" x2="'+mrTX2.toFixed(1)+'" y2="'+mrTY2.toFixed(1)+'" stroke="#c4b5fd" stroke-width="3" stroke-linecap="round"/>';
+    clockSvg+='<circle cx="'+mrTX2.toFixed(1)+'" cy="'+mrTY2.toFixed(1)+'" r="2.5" fill="#c4b5fd"/>';
+    var mrLR=clockFaceR-24;
+    var mrLX=cx+mrLR*Math.cos(mrCA),mrLY=cy+mrLR*Math.sin(mrCA);
+    clockSvg+='<text x="'+mrLX.toFixed(1)+'" y="'+(mrLY-2).toFixed(1)+'" font-size="5" fill="#c4b5fd" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">RISE</text>';
+    clockSvg+='<text x="'+mrLX.toFixed(1)+'" y="'+(mrLY+6).toFixed(1)+'" font-size="5" fill="#c4b5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonrise)+'</text>';
+    // Moonset marker
+    var msTX1=cx+(clockFaceR-4)*Math.cos(msCA),msTY1=cy+(clockFaceR-4)*Math.sin(msCA);
+    var msTX2=cx+(clockFaceR-12)*Math.cos(msCA),msTY2=cy+(clockFaceR-12)*Math.sin(msCA);
+    clockSvg+='<line x1="'+msTX1.toFixed(1)+'" y1="'+msTY1.toFixed(1)+'" x2="'+msTX2.toFixed(1)+'" y2="'+msTY2.toFixed(1)+'" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>';
+    clockSvg+='<circle cx="'+msTX2.toFixed(1)+'" cy="'+msTY2.toFixed(1)+'" r="2.5" fill="#818cf8"/>';
+    var msLR=clockFaceR-24;
+    var msLX=cx+msLR*Math.cos(msCA),msLY=cy+msLR*Math.sin(msCA);
+    clockSvg+='<text x="'+msLX.toFixed(1)+'" y="'+(msLY-2).toFixed(1)+'" font-size="5" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SET</text>';
+    clockSvg+='<text x="'+msLX.toFixed(1)+'" y="'+(msLY+6).toFixed(1)+'" font-size="5" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonset)+'</text>';
+  }
+
+  /* ══ BUILD SVG ════════════════════════════════════════════════════════════ */
+  var svg='<div class="sky-chart-wrap">'+
+    '<svg class="sky-chart" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
+    '<defs>'+
+      '<radialGradient id="clockBg" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#1e1b4b"/>'+
+        '<stop offset="60%" stop-color="#312e81"/>'+
+        '<stop offset="100%" stop-color="#7c3aed"/>'+
+      '</radialGradient>'+
+      '<radialGradient id="sunGlowClock" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#fde047"/>'+
+        '<stop offset="60%" stop-color="#fbbf24" stop-opacity="0.6"/>'+
+        '<stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>'+
+      '</radialGradient>'+
+      '<radialGradient id="moonGlowClock" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#e2e8f0"/>'+
+        '<stop offset="60%" stop-color="#c4b5fd" stop-opacity="0.5"/>'+
+        '<stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>'+
+      '</radialGradient>'+
+      '<radialGradient id="thermalPeak" cx="0.5" cy="0.5" r="0.5">'+
+        '<stop offset="0%" stop-color="#ef4444" stop-opacity="0.25"/>'+
+        '<stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>'+
+      '</radialGradient>'+
+    '</defs>'+
+    /* Clock face background */
+    '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="url(#clockBg)" opacity="0.3"/>'+
+    /* Thermal peak highlight */
+    (thermalPeakT?'<circle cx="'+sunCycleXY(thermalPeakT).x.toFixed(1)+'" cy="'+sunCycleXY(thermalPeakT).y.toFixed(1)+'" r="35" fill="url(#thermalPeak)"/>':'')+
+    /* Horizon line */
+    '<line x1="'+(cx-clockR)+'" y1="'+cy+'" x2="'+(cx+clockR)+'" y2="'+cy+'" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="4,3"/>'+
+    '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
+    /* Vertical guide */
+    '<line x1="'+cx+'" y1="'+(cy-clockR)+'" x2="'+cx+'" y2="'+(cy+clockR)+'" stroke="rgba(92,92,110,.1)" stroke-width="0.5"/>'+
+    /* Labels: SOLAR NOON (top) */
+    '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
+    '<text x="'+cx+'" y="27" font-size="7" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.solarNoon)+'</text>'+
+    /* SUNSET (right, 3 o'clock) */
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="start">'+fmtSunTime(times.sunset)+'</text>'+
+    /* SOLAR MIDNIGHT (bottom, 6 o'clock) */
+    '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
+    '<text x="'+cx+'" y="'+(H-5)+'" font-size="7" fill="#818cf8" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(solarMidnight)+'</text>'+
+    /* SUNRISE (left, 9 o'clock) */
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
+    /* DAWN label */
+    (times.dawn&&times.solarNoon?(function(){
+      var dxy=sunCycleXY(times.dawn);
+      return '<text x="'+dxy.x.toFixed(1)+'" y="'+(dxy.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DAWN</text>'+
+        '<text x="'+dxy.x.toFixed(1)+'" y="'+(dxy.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dawn)+'</text>';
+    })():'')+
+    /* DUSK label */
+    (times.dusk&&times.solarNoon?(function(){
+      var dxy=sunCycleXY(times.dusk);
+      return '<text x="'+dxy.x.toFixed(1)+'" y="'+(dxy.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
+        '<text x="'+dxy.x.toFixed(1)+'" y="'+(dxy.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
+    })():'')+
+    /* ══ HEAT GRADIENT RING ══ */
+    heatSegments+
+    /* ══ DAYLIGHT RIBBON ══ */
+    daylightRibbon+
+    /* Thermal peak marker */
+    (thermalPeakT?(function(){
+      var xy=sunCycleXY(thermalPeakT);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#dc2626" stroke="#fca5a5" stroke-width="2" opacity="0.95"/>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-12).toFixed(1)+'" font-size="8" fill="#fca5a5" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-22).toFixed(1)+'" font-size="6" fill="#fca5a5" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(thermalPeakT)+'</text>';
+    })():'')+
+    /* Thermal min marker */
+    (thermalMinT?(function(){
+      var xy=sunCycleXY(thermalMinT);
+      return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#1e40af" stroke="#93c5fd" stroke-width="2" opacity="0.95"/>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+18).toFixed(1)+'" font-size="8" fill="#93c5fd" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalMinTemp)+'°</text>'+
+        '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+28).toFixed(1)+'" font-size="6" fill="#93c5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(thermalMinT)+'</text>';
+    })():'')+
+    /* Moon path */
+    moonPathCircle+
+    /* ══ ANALOG CLOCK ══ */
+    clockSvg+
+    /* Current moon position with phase icon */
+    (function(){
+      var mx=moonXY.x,my=moonXY.y,mr=8;
+      var phase=moon.phase;
+      var op=moonBelow?0.6:1;
+      var ms='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+(mr+4)+'" fill="url(#moonGlowClock)" opacity="'+(op*0.7)+'"/>';
+      if(phase<0.5){
+        var if2=phase*2;
+        if(if2<0.5){
+          var tw=mr*Math.abs(Math.cos(if2*2*Math.PI));
+          ms+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="1" opacity="'+op+'"/>';
+          ms+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+tw.toFixed(1)+','+mr+' 0 0,'+(if2<0.25?0:1)+' '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#e2e8f0" opacity="'+op+'"/>';
+        }else{
+          var dw=mr*Math.abs(Math.cos((if2-0.5)*2*Math.PI));
+          ms+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#e2e8f0" opacity="'+op+'"/>';
+          ms+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+dw.toFixed(1)+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#1e1b4b" opacity="'+(op*0.7)+'"/>';
+        }
+      }else{
+        var if2=(1-phase)*2;
+        if(if2>0.5){
+          var dw=mr*Math.abs(Math.cos((if2-0.5)*2*Math.PI));
+          ms+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#e2e8f0" opacity="'+op+'"/>';
+          ms+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,1 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+dw.toFixed(1)+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#1e1b4b" opacity="'+(op*0.7)+'"/>';
+        }else{
+          var tw=mr*Math.abs(Math.cos(if2*2*Math.PI));
+          ms+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+mr+'" fill="#1e1b4b" stroke="#818cf8" stroke-width="1" opacity="'+op+'"/>';
+          ms+='<path d="M '+mx.toFixed(1)+','+(my-mr).toFixed(1)+' A '+mr+','+mr+' 0 0,0 '+mx.toFixed(1)+','+(my+mr).toFixed(1)+' A '+tw.toFixed(1)+','+mr+' 0 0,'+(if2<0.25?1:0)+' '+mx.toFixed(1)+','+(my-mr).toFixed(1)+'" fill="#e2e8f0" opacity="'+op+'"/>';
+        }
+      }
+      return ms;
+    })()+
+    /* Current sun position */
+    '<circle cx="'+sunXY.x.toFixed(1)+'" cy="'+sunXY.y.toFixed(1)+'" r="16" fill="url(#sunGlowClock)" opacity="'+(sunBelow?0.4:1)+'"/>'+
+    '<circle cx="'+sunXY.x.toFixed(1)+'" cy="'+sunXY.y.toFixed(1)+'" r="7" fill="#fde047" stroke="#fbbf24" stroke-width="2" opacity="'+(sunBelow?0.5:1)+'"/>'+
+    '</svg>'+
+    /* Legend */
+    '<div class="sky-chart-legend">'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#fbbf24"></span>Sun</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#c4b5fd"></span>Moon</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#a855f6"></span>Clock</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#0a0a1a,#f97316,#fde047,#f97316,#0a0a1a)"></span>Daylight</span>'+
+      '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
+      (thermalPeakT?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'° '+fmtSunTime(thermalPeakT)+'</span>':'')+
+      (thermalMinT?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'° '+fmtSunTime(thermalMinT)+'</span>':'')+
+      '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
+    '</div>'+
+  '</div>';
+  return svg;
+}
+
+/* ── Main render function ────────────────────────────────────────────────── */
+function render(){
+  var lat=CUR_LOC_OBJ.lat,lon=CUR_LOC_OBJ.lon;
+  var now=new Date();
+  var times=calcSunTimes(lat,lon,now);
+  var pos=calcSunPosition(lat,lon,now);
+  var moon=calcMoonPhase(now);
+  var moonPos=calcMoonPositionAltAz(lat,lon,now);
+  var moonTimes=calcMoonRiseSet(lat,lon,now);
+  var hourlyData=generateMockHourly(now,times.solarNoon?times.solarNoon.getTime():now.getTime());
+  var tzShort='EDT';
+  try{
+    var tzFmt=new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,timeZoneName:'short'});
+    var tzPart=tzFmt.formatToParts(now).find(function(p){return p.type==='timeZoneName'});
+    if(tzPart&&tzPart.value)tzShort=tzPart.value;
+  }catch(e){}
+  var html=buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes);
+  document.getElementById('chartContainer').innerHTML=html;
+}
+
+/* Initial render + auto-refresh every 60 seconds */
+render();
+setInterval(render,60000);
+</script>
+</body>
+</html>
