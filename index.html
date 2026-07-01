@@ -3644,39 +3644,40 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
     /* Moon path (perfect circle, slightly inside) */
     moonPathCircle+
     /* Analog clock face in the center showing current EDT time.
-       Sundial-style design with Roman numerals and bronze/gold tones. */
+       Sundial-style design with Roman numerals in royal purple/orange
+       matching the page's color scheme. */
     (function(){
       var clockFaceR=clockR-55;  /* radius of the analog clock face */
       var clockSvg='';
-      /* Sundial-style background: warm aged-bronze radial gradient */
+      /* Sundial background: deep purple radial gradient (matches page theme) */
       clockSvg+='<defs>'+
         '<radialGradient id="sundialBg" cx="0.5" cy="0.5" r="0.5">'+
-          '<stop offset="0%" stop-color="#3d2f1f"/>'+
-          '<stop offset="70%" stop-color="#2a1f15"/>'+
-          '<stop offset="100%" stop-color="#1a1208"/>'+
+          '<stop offset="0%" stop-color="#2e1065"/>'+
+          '<stop offset="70%" stop-color="#1e1b4b"/>'+
+          '<stop offset="100%" stop-color="#0e0a1f"/>'+
         '</radialGradient>'+
         '<linearGradient id="gnomonGrad" x1="0" y1="0" x2="0" y2="1">'+
-          '<stop offset="0%" stop-color="#d4a574"/>'+
-          '<stop offset="100%" stop-color="#8b6914"/>'+
+          '<stop offset="0%" stop-color="#fb923c"/>'+
+          '<stop offset="100%" stop-color="#a855f7"/>'+
         '</linearGradient>'+
       '</defs>';
-      /* Clock face background circle (aged bronze) */
-      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="url(#sundialBg)" stroke="#8b6914" stroke-width="1.5"/>';
-      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockFaceR-2)+'" fill="none" stroke="#5c4530" stroke-width="0.5"/>';
-      /* Hour tick marks (12 ticks) - sundial style with longer marks */
+      /* Clock face background circle (deep purple) */
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="url(#sundialBg)" stroke="#a855f7" stroke-width="1.5"/>';
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockFaceR-2)+'" fill="none" stroke="#6d28d9" stroke-width="0.5"/>';
+      /* Hour tick marks (12 ticks) - orange major, purple minor */
       for(var h=0;h<12;h++){
         var tickAngle=(h*30-90)*Math.PI/180;
         var isMajor=(h%3===0);  /* 12, 3, 6, 9 are longer/bolder */
         var tickLen=isMajor?10:6;
         var tickW=isMajor?2:1;
-        var tickColor=isMajor?'#c9a96e':'#8b6914';
+        var tickColor=isMajor?'#fb923c':'#7c3aed';
         var x1=cx+(clockFaceR-tickLen)*Math.cos(tickAngle);
         var y1=cy+(clockFaceR-tickLen)*Math.sin(tickAngle);
         var x2=cx+clockFaceR*Math.cos(tickAngle);
         var y2=cy+clockFaceR*Math.sin(tickAngle);
         clockSvg+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="'+tickColor+'" stroke-width="'+tickW+'" stroke-linecap="round"/>';
       }
-      /* Minute tick marks (60 ticks, skip hour positions) - very subtle */
+      /* Minute tick marks (60 ticks, skip hour positions) - subtle purple */
       for(var m=0;m<60;m++){
         if(m%5===0)continue;
         var minTickAngle=(m*6-90)*Math.PI/180;
@@ -3684,9 +3685,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
         var mty1=cy+(clockFaceR-3)*Math.sin(minTickAngle);
         var mtx2=cx+clockFaceR*Math.cos(minTickAngle);
         var mty2=cy+clockFaceR*Math.sin(minTickAngle);
-        clockSvg+='<line x1="'+mtx1.toFixed(1)+'" y1="'+mty1.toFixed(1)+'" x2="'+mtx2.toFixed(1)+'" y2="'+mty2.toFixed(1)+'" stroke="#5c4530" stroke-width="0.3"/>';
+        clockSvg+='<line x1="'+mtx1.toFixed(1)+'" y1="'+mty1.toFixed(1)+'" x2="'+mtx2.toFixed(1)+'" y2="'+mty2.toFixed(1)+'" stroke="#4c1d95" stroke-width="0.3"/>';
       }
-      /* Roman numerals at all 12 positions */
+      /* Roman numerals at all 12 positions - orange major, purple minor */
       var roman=['XII','I','II','III','IV','V','VI','VII','VIII','IX','X','XI'];
       for(var r=0;r<12;r++){
         var romanAngle=(r*30-90)*Math.PI/180;
@@ -3694,35 +3695,34 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData){
         var rx=cx+romanR*Math.cos(romanAngle);
         var ry=cy+romanR*Math.sin(romanAngle);
         var isMajorRoman=(r%3===0);
-        clockSvg+='<text x="'+rx.toFixed(1)+'" y="'+(ry+3).toFixed(1)+'" font-size="'+(isMajorRoman?9:7)+'" fill="'+(isMajorRoman?'#d4a574':'#8b6914')+'" font-family="Georgia,serif" font-weight="'+(isMajorRoman?'700':'500')+'" text-anchor="middle">'+roman[r]+'</text>';
+        clockSvg+='<text x="'+rx.toFixed(1)+'" y="'+(ry+3).toFixed(1)+'" font-size="'+(isMajorRoman?9:7)+'" fill="'+(isMajorRoman?'#fb923c':'#c084fc')+'" font-family="Georgia,serif" font-weight="'+(isMajorRoman?'700':'500')+'" text-anchor="middle">'+roman[r]+'</text>';
       }
       /* Get current time in EDT for the clock hands */
       var nowEDT=new Date(now.toLocaleString('en-US',{timeZone:CONFIG.tz}));
       var hours=nowEDT.getHours()%12;
       var minutes=nowEDT.getMinutes();
       var seconds=nowEDT.getSeconds();
-      /* Hour hand: triangular gnomon-style (sundial shadow) */
+      /* Hour hand: triangular gnomon-style with orange→purple gradient */
       var hourAngle=((hours+minutes/60)*30-90)*Math.PI/180;
       var hourLen=clockFaceR*0.55;
       var hourX=cx+hourLen*Math.cos(hourAngle);
       var hourY=cy+hourLen*Math.sin(hourAngle);
-      /* Draw hour hand as a tapered triangle (gnomon style) */
       var perpAngle=hourAngle+Math.PI/2;
       var baseW=4;
       var hBaseX1=cx+baseW*Math.cos(perpAngle);
       var hBaseY1=cy+baseW*Math.sin(perpAngle);
       var hBaseX2=cx-baseW*Math.cos(perpAngle);
       var hBaseY2=cy-baseW*Math.sin(perpAngle);
-      clockSvg+='<polygon points="'+hBaseX1.toFixed(1)+','+hBaseY1.toFixed(1)+' '+hBaseX2.toFixed(1)+','+hBaseY2.toFixed(1)+' '+hourX.toFixed(1)+','+hourY.toFixed(1)+'" fill="url(#gnomonGrad)" stroke="#5c4530" stroke-width="0.5"/>';
-      /* Minute hand: thinner bronze line */
+      clockSvg+='<polygon points="'+hBaseX1.toFixed(1)+','+hBaseY1.toFixed(1)+' '+hBaseX2.toFixed(1)+','+hBaseY2.toFixed(1)+' '+hourX.toFixed(1)+','+hourY.toFixed(1)+'" fill="url(#gnomonGrad)" stroke="#7c3aed" stroke-width="0.5"/>';
+      /* Minute hand: thin orange line */
       var minAngle=((minutes+seconds/60)*6-90)*Math.PI/180;
       var minLen=clockFaceR*0.8;
       var minX=cx+minLen*Math.cos(minAngle);
       var minY=cy+minLen*Math.sin(minAngle);
-      clockSvg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+minX.toFixed(1)+'" y2="'+minY.toFixed(1)+'" stroke="#d4a574" stroke-width="1.5" stroke-linecap="round"/>';
-      /* Center boss (sundial gnomon base) */
-      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="#8b6914" stroke="#d4a574" stroke-width="1"/>';
-      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="2" fill="#5c4530"/>';
+      clockSvg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+minX.toFixed(1)+'" y2="'+minY.toFixed(1)+'" stroke="#fb923c" stroke-width="1.5" stroke-linecap="round"/>';
+      /* Center boss (purple with orange border) */
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="#7c3aed" stroke="#fb923c" stroke-width="1"/>';
+      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="2" fill="#4c1d95"/>';
       return clockSvg;
     })()+
     /* Current moon position - rendered with the actual moon phase icon
