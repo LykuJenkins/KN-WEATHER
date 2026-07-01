@@ -2994,57 +2994,39 @@ function equationOfTime(T){
    Uses the NOAA solar calculator algorithm. */
 function calcSunTimes(lat,lon,date){
   var result={sunrise:null,sunset:null,solarNoon:null,dawn:null,dusk:null};
-  /* Midnight LOCAL TIME for the given date - this is our reference point.
-     We must use the local timezone (CONFIG.tz) so that sun times are
-     calculated for the correct calendar day. Using UTC midnight causes
-     bugs in the evening when the UTC date has already advanced past
-     midnight while the local date hasn't. */
+  /* Get the LOCAL date (year/month/day) in the configured timezone.
+     This ensures we calculate sun times for the correct calendar day,
+     even in the evening when the UTC date has already advanced. */
   var localStr=date.toLocaleString('en-US',{timeZone:CONFIG.tz,year:'numeric',month:'2-digit',day:'2-digit'});
-  var parts=localStr.match(/(\d{4})\/(\d{2})\/(\d{2})/);
-  var localYear=parts?parseInt(parts[1]):date.getFullYear();
-  var localMonth=parts?parseInt(parts[2])-1:date.getMonth();
-  var localDay=parts?parseInt(parts[3]):date.getDate();
-  /* Build midnight UTC for the local date, then adjust by the timezone
-     offset so the Julian Day corresponds to local midnight */
-  var midnightLocal=new Date(Date.UTC(localYear,localMonth,localDay));
-  /* Adjust for timezone: subtract the offset so we get local midnight
-     expressed as a UTC timestamp. E.g., for EDT (UTC-4), local midnight
-     is 4:00 AM UTC, so we add 4 hours. */
-  var tzOffsetMin=getTzOffsetMinutes(date);
-  midnightLocal=new Date(midnightLocal.getTime()-tzOffsetMin*60000);
-  var jd=toJulianDay(midnightLocal);
+  var parts=localStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);  /* MM/DD/YYYY */
+  var localMonth=parts?parseInt(parts[1])-1:date.getMonth();
+  var localDay=parts?parseInt(parts[2]):date.getDate();
+  var localYear=parts?parseInt(parts[3]):date.getFullYear();
+  /* Use UTC midnight for the local date as the base. The solar noon
+     formula (720 - 4*lon - 4*eqTime) gives minutes from UTC midnight.
+     Using UTC midnight (not adjusted local midnight) ensures the
+     times are calculated correctly for any timezone. */
+  var midnightUTC=new Date(Date.UTC(localYear,localMonth,localDay));
+  var jd=toJulianDay(midnightUTC);
   var T=(jd-2451545.0)/36525;
   var decl=sunDeclination(T);
   var eqTime=equationOfTime(T);
   /* Solar noon: minutes from UTC midnight = 720 - 4*longitude - 4*eqTime */
   var solarNoonMinutes=(720-4*lon-eqTime*4);
-  result.solarNoon=new Date(midnightLocal.getTime()+solarNoonMinutes*60000);
+  result.solarNoon=new Date(midnightUTC.getTime()+solarNoonMinutes*60000);
   /* Hour angle for sunrise/sunset (using -0.833 degrees for the Sun's
      center at the horizon, corrected for atmospheric refraction) */
   var haSunrise=calcHourAngle(decl,lat,-0.833);
   var haDawn=calcHourAngle(decl,lat,-6);  /* civil dawn/dusk: -6 degrees */
   if(!isNaN(haSunrise)){
-    result.sunrise=new Date(midnightLocal.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
-    result.sunset=new Date(midnightLocal.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
+    result.sunrise=new Date(midnightUTC.getTime()+(solarNoonMinutes-haSunrise*4)*60000);
+    result.sunset=new Date(midnightUTC.getTime()+(solarNoonMinutes+haSunrise*4)*60000);
   }
   if(!isNaN(haDawn)){
-    result.dawn=new Date(midnightLocal.getTime()+(solarNoonMinutes-haDawn*4)*60000);
-    result.dusk=new Date(midnightLocal.getTime()+(solarNoonMinutes+haDawn*4)*60000);
+    result.dawn=new Date(midnightUTC.getTime()+(solarNoonMinutes-haDawn*4)*60000);
+    result.dusk=new Date(midnightUTC.getTime()+(solarNoonMinutes+haDawn*4)*60000);
   }
   return result;
-}
-
-/* Get the timezone offset in minutes for a given date in CONFIG.tz.
-   Returns the offset such that local time = UTC + offset.
-   E.g., for EDT (UTC-4), returns -240. */
-function getTzOffsetMinutes(date){
-  try{
-    var utcDate=new Date(date.toLocaleString('en-US',{timeZone:'UTC'}));
-    var tzDate=new Date(date.toLocaleString('en-US',{timeZone:CONFIG.tz}));
-    return Math.round((tzDate-utcDate)/60000);
-  }catch(e){
-    return date.getTimezoneOffset();
-  }
 }
 
 /* Calculate the hour angle (in degrees) for a given solar altitude angle. */
