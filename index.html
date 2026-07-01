@@ -3560,7 +3560,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     });
     var tempRange=tempMax-tempMin||1;
     /* Interpolate sub-points between each pair of temp data points */
-    var subSteps=5;  /* 5 sub-segments per hour interval = smooth gradient */
+    var subSteps=10;  /* 10 sub-segments per hour interval = ultra-smooth */
     for(var i=0;i<tempPoints.length-1;i++){
       var tp=tempPoints[i];
       var tpNext=tempPoints[i+1];
@@ -3769,20 +3769,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
           '<stop offset="0%" stop-color="#fb923c"/>'+
           '<stop offset="100%" stop-color="#a855f7"/>'+
         '</linearGradient>'+
-        '<clipPath id="clockClip">'+
-          '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'"/>'+
-        '</clipPath>'+
       '</defs>';
       /* Clock face background circle (deep purple) */
       clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="url(#sundialBg)" stroke="#a855f7" stroke-width="1.5"/>';
-      /* NASA SOHO EIT 284Å sun image as clock face background.
-         The live solar corona image shows the sun's rotation, giving the
-         clock a real-time solar connection. Clipped to the clock circle
-         with a semi-transparent purple overlay for readability. */
-      clockSvg+='<image href="https://soho.nascom.nasa.gov/data/LATEST/current_eit_284.gif" x="'+(cx-clockFaceR)+'" y="'+(cy-clockFaceR)+'" width="'+(clockFaceR*2)+'" height="'+(clockFaceR*2)+'" clip-path="url(#clockClip)" opacity="0.5" preserveAspectRatio="xMidYMid slice"/>';
-      /* Semi-transparent purple overlay so Roman numerals/hands are readable
-         over the solar image */
-      clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockFaceR+'" fill="rgba(46,16,101,0.4)" clip-path="url(#clockClip)"/>';
       clockSvg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockFaceR-2)+'" fill="none" stroke="#6d28d9" stroke-width="0.5"/>';
       /* Hour tick marks (12 ticks) - orange major, purple minor */
       for(var h=0;h<12;h++){
