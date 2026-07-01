@@ -3684,15 +3684,17 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
        Removed from here to avoid floating labels. */
     /* Heat gradient ring (clipped to outer donut band so it can't overflow) */
     '<g clip-path="url(#heatRingClip)">'+heatSegments+'</g>'+
-    /* Daylight ribbon (clipped to inner donut band) with DAWN/DUSK markers */
+    /* Daylight ribbon (clipped to inner donut band) with DAWN/DUSK markers.
+       Uses line segments (chords) instead of arcs to avoid arc direction
+       bugs at phase boundaries. With 200 segments the difference is invisible. */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
       var duskMs=times.dusk.getTime();
       var daylightRibbonR=clockR-14;
       var ribbonSegs='';
-      var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()+12*3600000);
-      var segCount=200;
+      var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()-12*3600000);
+      var segCount=360; /* one segment per degree for perfect smoothness */
       for(var i=0;i<segCount;i++){
         var t1Ms=smMs+(i/segCount)*24*3600000;
         var t2Ms=smMs+((i+1)/segCount)*24*3600000;
@@ -3700,31 +3702,24 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var isDay=midMs>=dawnMs&&midMs<=duskMs;
         var color;
         if(isDay){
-          /* Daylight gradient: dark yellow at dawn → full yellow at noon
-             → dark yellow at dusk → black at night.
-             Starts at 15% brightness at dawn, peaks at 100% at solar noon,
-             fades back to 15% at dusk. This shows visible daylight from
-             dawn to dusk, helping plan last minutes of daylight and
-             earliest time of daylight for activities like camping. */
-          var dp=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
-          var brightness=0.15+0.85*Math.sin(dp*Math.PI);  /* 0.15→1→0.15 */
-          var r=Math.round(brightness*255);
-          var g=Math.round(brightness*220);
-          var b=0;
-          color='rgb('+r+','+g+','+b+')';
+          /* Daylight: dark yellow at dawn → full yellow at noon → dark yellow at dusk.
+             15% min brightness so there's visible yellow at dawn/dusk. */
+          var dp=(midMs-dawnMs)/(duskMs-dawnMs);
+          var brightness=0.15+0.85*Math.sin(dp*Math.PI);
+          color='rgb('+Math.round(brightness*255)+','+Math.round(brightness*220)+',0)';
         }else{
-          color='#0a0a1a';  /* pure black for night */
+          color='#0a0a1a'; /* black for night */
         }
         var a1=sunCycleAngle(new Date(t1Ms));
         var a2=sunCycleAngle(new Date(t2Ms));
-        /* Handle wrap-around: if a2 < a1, add 2π so arc goes forward */
+        /* Handle wrap-around */
         if(a2<a1-0.1)a2+=2*Math.PI;
         var x1=cx+daylightRibbonR*Math.cos(a1);
         var y1=cy+daylightRibbonR*Math.sin(a1);
         var x2=cx+daylightRibbonR*Math.cos(a2);
         var y2=cy+daylightRibbonR*Math.sin(a2);
-        var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
-        ribbonSegs+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="5" opacity="1"/>';
+        /* Use line (chord) instead of arc - avoids largeArc direction bugs */
+        ribbonSegs+='<line x1="'+x1.toFixed(2)+'" y1="'+y1.toFixed(2)+'" x2="'+x2.toFixed(2)+'" y2="'+y2.toFixed(2)+'" stroke="'+color+'" stroke-width="6" opacity="1"/>';
       }
       /* DAWN marker on the daylight ribbon - locked to the ribbon ring */
       if(times.dawn){
