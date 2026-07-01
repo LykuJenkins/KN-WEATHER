@@ -3602,22 +3602,46 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
     /* Vertical line (12 to 6) - faint guide */
     '<line x1="'+cx+'" y1="'+(cy-clockR)+'" x2="'+cx+'" y2="'+(cy+clockR)+'" stroke="rgba(92,92,110,.1)" stroke-width="0.5"/>'+
-    /* Solar position labels with actual times */
-    /* Top: SOLAR NOON with time */
+    /* Solar position labels at their ACTUAL time positions on the clock.
+       This ensures the sun dot aligns with the SUNRISE/SUNSET markers
+       when it reaches those times. Previously these were at fixed 9/3
+       o'clock positions, but actual sunrise/sunset times don't always
+       correspond to exactly 6h from solar noon. */
+    /* SOLAR NOON: at 12 o'clock (top) - this IS exactly at solar noon */
     '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
     '<text x="'+cx+'" y="27" font-size="7" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.solarNoon)+'</text>'+
-    /* Right: SUNSET with time */
-    '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
-    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="start">'+fmtSunTime(times.sunset)+'</text>'+
-    /* Bottom: SOLAR MIDNIGHT with time (12h from solar noon) */
+    /* SUNSET: at actual sunset time position on the clock circle */
+    (times.sunset&&times.solarNoon?(function(){
+      var ssHfn=(times.sunset.getTime()-times.solarNoon.getTime())/3600000;
+      var ssXY=timeToClockXY(ssHfn);
+      /* Position label just outside the circle at the sunset angle */
+      var ssAngle=(ssHfn*15-90)*Math.PI/180;
+      var lblR=clockR+14;
+      var lblX=cx+lblR*Math.cos(ssAngle);
+      var lblY=cy+lblR*Math.sin(ssAngle);
+      return '<line x1="'+(cx+clockR*Math.cos(ssAngle)).toFixed(1)+'" y1="'+(cy+clockR*Math.sin(ssAngle)).toFixed(1)+'" x2="'+lblX.toFixed(1)+'" y2="'+lblY.toFixed(1)+'" stroke="#fb7185" stroke-width="1" opacity="0.5"/>'+
+        '<circle cx="'+(cx+clockR*Math.cos(ssAngle)).toFixed(1)+'" cy="'+(cy+clockR*Math.sin(ssAngle)).toFixed(1)+'" r="3" fill="#fb7185"/>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY-2).toFixed(1)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SUNSET</text>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+9).toFixed(1)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.sunset)+'</text>';
+    })():'')+
+    /* SOLAR MIDNIGHT: at 6 o'clock (bottom) - this IS exactly 12h from solar noon */
     (function(){
       var midnight=times.solarNoon?new Date(times.solarNoon.getTime()+12*3600000):null;
       return '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
         '<text x="'+cx+'" y="'+(H-5)+'" font-size="7" fill="#818cf8" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(midnight)+'</text>';
     })()+
-    /* Left: SUNRISE with time */
-    '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
-    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
+    /* SUNRISE: at actual sunrise time position on the clock circle */
+    (times.sunrise&&times.solarNoon?(function(){
+      var srHfn=(times.sunrise.getTime()-times.solarNoon.getTime())/3600000;
+      var srAngle=(srHfn*15-90)*Math.PI/180;
+      var lblR=clockR+14;
+      var lblX=cx+lblR*Math.cos(srAngle);
+      var lblY=cy+lblR*Math.sin(srAngle);
+      return '<line x1="'+(cx+clockR*Math.cos(srAngle)).toFixed(1)+'" y1="'+(cy+clockR*Math.sin(srAngle)).toFixed(1)+'" x2="'+lblX.toFixed(1)+'" y2="'+lblY.toFixed(1)+'" stroke="#34d399" stroke-width="1" opacity="0.5"/>'+
+        '<circle cx="'+(cx+clockR*Math.cos(srAngle)).toFixed(1)+'" cy="'+(cy+clockR*Math.sin(srAngle)).toFixed(1)+'" r="3" fill="#34d399"/>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY-2).toFixed(1)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SUNRISE</text>'+
+        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+9).toFixed(1)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.sunrise)+'</text>';
+    })():'')+
     /* Civil Dawn and Civil Dusk labels at their clock positions.
        Civil Dawn is before sunrise (lower-left, between sunrise and midnight).
        Civil Dusk is after sunset (lower-right, between sunset and midnight). */
