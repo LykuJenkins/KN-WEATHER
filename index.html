@@ -3679,31 +3679,12 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     /* SUNRISE: at 9 o'clock (left, on horizon line) */
     '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
     '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
-    /* Civil Dawn and Civil Dusk labels at their clock positions.
-       Handle the case where dawn/dusk are for today but we're currently
-       at night (before dawn or after dusk) by adjusting the timestamp. */
-    (times.dawn&&times.solarNoon?(function(){
-      var dawnT=times.dawn;
-      /* If we're before today's dawn, use yesterday's dawn for positioning */
-      if(now.getTime()<dawnT.getTime())dawnT=new Date(dawnT.getTime()-24*3600000);
-      var dawnXY=sunCycleXY(dawnT);
-      return '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DAWN</text>'+
-        '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dawn)+'</text>';
-    })():'')+
-    (times.dusk&&times.solarNoon?(function(){
-      var duskT=times.dusk;
-      /* If we're before today's dusk (it hasn't happened yet), use yesterday's
-         dusk for positioning so the label appears in the right clock position */
-      if(now.getTime()<duskT.getTime()&&now.getTime()<times.solarNoon.getTime()){
-        duskT=new Date(duskT.getTime()-24*3600000);
-      }
-      var duskXY=sunCycleXY(duskT);
-      return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
-        '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
-    })():'')+
+    /* DAWN and DUSK labels are rendered INSIDE the daylight ribbon
+       group (below) so they're locked to the ribbon's ring axis.
+       Removed from here to avoid floating labels. */
     /* Heat gradient ring (clipped to outer donut band so it can't overflow) */
     '<g clip-path="url(#heatRingClip)">'+heatSegments+'</g>'+
-    /* Daylight ribbon (clipped to inner donut band) */
+    /* Daylight ribbon (clipped to inner donut band) with DAWN/DUSK markers */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
@@ -3721,10 +3702,12 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         if(isDay){
           /* Daylight gradient: dark yellow at dawn → full yellow at noon
              → dark yellow at dusk → black at night.
-             Uses a sin curve but with a minimum brightness of 0.25 so
-             there's visible yellow at dawn/dusk (not pure black). */
+             Starts at 15% brightness at dawn, peaks at 100% at solar noon,
+             fades back to 15% at dusk. This shows visible daylight from
+             dawn to dusk, helping plan last minutes of daylight and
+             earliest time of daylight for activities like camping. */
           var dp=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
-          var brightness=0.25+0.75*Math.sin(dp*Math.PI);  /* 0.25→1→0.25 */
+          var brightness=0.15+0.85*Math.sin(dp*Math.PI);  /* 0.15→1→0.15 */
           var r=Math.round(brightness*255);
           var g=Math.round(brightness*220);
           var b=0;
@@ -3742,6 +3725,40 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var y2=cy+daylightRibbonR*Math.sin(a2);
         var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
         ribbonSegs+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="5" opacity="1"/>';
+      }
+      /* DAWN marker on the daylight ribbon - locked to the ribbon ring */
+      if(times.dawn){
+        var dawnT=times.dawn;
+        /* If before today's dawn, use yesterday's for positioning */
+        if(now.getTime()<dawnT.getTime())dawnT=new Date(dawnT.getTime()-24*3600000);
+        var dawnA=sunCycleAngle(dawnT);
+        var dawnRX=cx+daylightRibbonR*Math.cos(dawnA);
+        var dawnRY=cy+daylightRibbonR*Math.sin(dawnA);
+        ribbonSegs+='<circle cx="'+dawnRX.toFixed(1)+'" cy="'+dawnRY.toFixed(1)+'" r="3" fill="#fde047" stroke="#000" stroke-width="1"/>';
+        /* DAWN label positioned radially outward from the ribbon */
+        var dawnLblR=daylightRibbonR+12;
+        var dawnLblX=cx+dawnLblR*Math.cos(dawnA);
+        var dawnLblY=cy+dawnLblR*Math.sin(dawnA);
+        ribbonSegs+='<text x="'+dawnLblX.toFixed(1)+'" y="'+(dawnLblY+2).toFixed(1)+'" font-size="6" fill="#fde047" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">DAWN</text>';
+        ribbonSegs+='<text x="'+dawnLblX.toFixed(1)+'" y="'+(dawnLblY+10).toFixed(1)+'" font-size="5" fill="#fde047" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dawn)+'</text>';
+      }
+      /* DUSK marker on the daylight ribbon - locked to the ribbon ring */
+      if(times.dusk){
+        var duskT=times.dusk;
+        /* If before today's dusk and before solar noon, use yesterday's */
+        if(now.getTime()<duskT.getTime()&&now.getTime()<times.solarNoon.getTime()){
+          duskT=new Date(duskT.getTime()-24*3600000);
+        }
+        var duskA=sunCycleAngle(duskT);
+        var duskRX=cx+daylightRibbonR*Math.cos(duskA);
+        var duskRY=cy+daylightRibbonR*Math.sin(duskA);
+        ribbonSegs+='<circle cx="'+duskRX.toFixed(1)+'" cy="'+duskRY.toFixed(1)+'" r="3" fill="#fb923c" stroke="#000" stroke-width="1"/>';
+        /* DUSK label positioned radially outward from the ribbon */
+        var duskLblR=daylightRibbonR+12;
+        var duskLblX=cx+duskLblR*Math.cos(duskA);
+        var duskLblY=cy+duskLblR*Math.sin(duskA);
+        ribbonSegs+='<text x="'+duskLblX.toFixed(1)+'" y="'+(duskLblY+2).toFixed(1)+'" font-size="6" fill="#fb923c" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">DUSK</text>';
+        ribbonSegs+='<text x="'+duskLblX.toFixed(1)+'" y="'+(duskLblY+10).toFixed(1)+'" font-size="5" fill="#fb923c" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
       }
       /* Current time marker on the daylight ribbon */
       var nowAngle=sunCycleAngle(now);
