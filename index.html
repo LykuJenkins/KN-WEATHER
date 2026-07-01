@@ -3419,60 +3419,91 @@ function tempToColor(frac){
 }
 
 /* Build the clock-style sky chart SVG showing sun and moon positions.
-   This is a pure 2D time clock - no compass, no elevation radius.
-   - 12:00 (top) = solar noon / peak (highest elevation)
-   - 3:00 (right) = sunset (horizon, descending)
-   - 6:00 (bottom) = nadir (lowest point, midnight)
-   - 9:00 (left) = sunrise (horizon, ascending)
-   The sun and moon travel ON the outer circle edge. Their position
-   is determined by time-of-day relative to their respective "noon"
-   (peak). The path is a perfect circle - no jagged lines. */
+   This is a conceptual 2D clock where:
+   - 12:00 (top) = solar noon (sun at highest point)
+   - 3:00 (right, on horizon) = sunset (sun crosses horizon going down)
+   - 6:00 (bottom) = solar midnight (sun at lowest point)
+   - 9:00 (left, on horizon) = sunrise (sun crosses horizon going up)
+   The sun's position is based on its PHASE in the daily cycle
+   (sunrise→noon→sunset→midnight), not raw hours. This ensures the
+   sun dot is at the 3 o'clock position exactly at sunset time. */
 function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
   var W=340,H=340;
   var cx=W/2,cy=H/2;
-  var clockR=140;  /* the clock circle radius - sun/moon travel on this edge */
-  var tempR=clockR-30;  /* max radius for temperature curve (inside the clock) */
+  var clockR=140;
+  var tempR=clockR-30;
 
-  /* Convert hours-from-noon to X,Y on the clock circle edge.
-     0h from noon = 12 o'clock (top), 6h = 3 o'clock (right),
-     12h = 6 o'clock (bottom), -6h = 9 o'clock (left).
-     The position is always ON the circle edge (radius = clockR). */
-  function timeToClockXY(hoursFromNoon){
-    var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
-    return {x:cx+clockR*Math.cos(angleRad),y:cy+clockR*Math.sin(angleRad)};
+  /* Calculate solar midnight (12h from solar noon) */
+  var solarMidnight=times.solarNoon?new Date(times.solarNoon.getTime()+12*3600000):null;
+
+  /* Map a timestamp to a clock angle (radians, SVG convention) based on
+     the sun's daily cycle phase:
+     - sunrise → 9 o'clock (180°)
+     - solar noon → 12 o'clock (270°)
+     - sunset → 3 o'clock (0°/360°)
+     - solar midnight → 6 o'clock (90°)
+     Each quarter of the cycle maps to 90° on the clock. */
+  function sunCycleAngle(t){
+    if(!times.solarNoon)return 270*Math.PI/180;
+    var tMs=t.getTime();
+    var snMs=times.solarNoon.getTime();
+    var srMs=times.sunrise?times.sunrise.getTime():snMs-6*3600000;
+    var ssMs=times.sunset?times.sunset.getTime():snMs+6*3600000;
+    var smMs=solarMidnight?solarMidnight.getTime():snMs+12*3600000;
+    /* Phase 1: sunrise → solar noon (180° → 270°) */
+    if(tMs>=srMs&&tMs<snMs){
+      var p=(tMs-srMs)/(snMs-srMs);
+      return (180+p*90)*Math.PI/180;
+    }
+    /* Phase 2: solar noon → sunset (270° → 360°) */
+    if(tMs>=snMs&&tMs<ssMs){
+      var p=(tMs-snMs)/(ssMs-snMs);
+      return (270+p*90)*Math.PI/180;
+    }
+    /* Phase 3: sunset → solar midnight (0° → 90°) */
+    if(tMs>=ssMs&&tMs<smMs){
+      var p=(tMs-ssMs)/(smMs-ssMs);
+      return (p*90)*Math.PI/180;
+    }
+    /* Phase 4: solar midnight → sunrise (90° → 180°) */
+    var srNextMs=srMs;
+    if(srNextMs<smMs)srNextMs+=24*3600000;
+    var smPrevMs=smMs-24*3600000;
+    if(tMs>=smMs&&tMs<srNextMs){
+      var p=(tMs-smMs)/(srNextMs-smMs);
+      return (90+p*90)*Math.PI/180;
+    }
+    if(tMs>=smPrevMs&&tMs<srMs){
+      var p=(tMs-smPrevMs)/(srMs-smPrevMs);
+      return (90+p*90)*Math.PI/180;
+    }
+    return 270*Math.PI/180;
   }
 
-  /* Convert hours-from-noon + temperature to X,Y inside the clock.
-     Temperature is mapped to radius: hottest = closest to center,
-     coolest = closest to the clock edge. This creates a thermal curve
-     that visually shows how temperature follows the sun's path with
-     a thermal lag (peak temp is slightly past solar noon). */
-  function timeTempToXY(hoursFromNoon,temp,minTemp,maxTemp){
-    var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
-    /* Map temperature to radius: maxTemp→tempR*0.15 (near center),
-       minTemp→tempR (near clock edge) */
-    var tempRange=maxTemp-minTemp||1;
-    var tempFrac=(temp-minTemp)/tempRange;  /* 0=cool, 1=hot */
-    var r=tempR-(tempFrac*(tempR*0.85));  /* hot → smaller r (center) */
-    return {x:cx+r*Math.cos(angleRad),y:cy+r*Math.sin(angleRad)};
+  /* Get X,Y on the clock circle for a given timestamp */
+  function sunCycleXY(t){
+    var a=sunCycleAngle(t);
+    return {x:cx+clockR*Math.cos(a),y:cy+clockR*Math.sin(a)};
   }
 
-  /* Calculate hours from solar noon for a given timestamp */
-  function hoursFromNoon(t,noontimeT){
-    return (t-noontimeT)/3600000;
+  /* Get X,Y for temperature overlay (inside the circle, radius based on temp) */
+  function tempCycleXY(t,temp,minT,maxT){
+    var a=sunCycleAngle(t);
+    var range=maxT-minT||1;
+    var frac=(temp-minT)/range;
+    var r=tempR-(frac*(tempR*0.85));
+    return {x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};
   }
 
-  /* The sun's path is a perfect circle (the clock face itself). */
+  /* Sun path circle */
   var sunPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="none" stroke="#fbbf24" stroke-width="2" opacity="0.4"/>';
-
-  /* The moon's path is also a perfect circle, slightly inside. */
+  /* Moon path circle */
   var moonPathCircle='<circle cx="'+cx+'" cy="'+cy+'" r="'+(clockR-8)+'" fill="none" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4" stroke-dasharray="4,2"/>';
 
-  /* Current sun position: on the sun's circle at the time angle */
-  var sunHours=times.solarNoon?hoursFromNoon(now.getTime(),times.solarNoon.getTime()):0;
-  var sunXY=timeToClockXY(sunHours);
+  /* Current sun position using phase-based cycle */
+  var sunXY=sunCycleXY(now);
 
-  /* Current moon position: find the moon's peak time (lunar noon) */
+  /* Current moon position using moon's own cycle (moonrise→peak→moonset→low) */
   var nowT=now.getTime();
   var moonPeakT=nowT;
   var moonPeakElev=-90;
@@ -3481,90 +3512,107 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     var p=calcMoonPositionAltAz(CUR_LOC_OBJ.lat,CUR_LOC_OBJ.lon,new Date(t));
     if(p.elevation>moonPeakElev){moonPeakElev=p.elevation;moonPeakT=t}
   }
-  var moonHours=hoursFromNoon(now.getTime(),moonPeakT);
-  function timeToMoonClockXY(hoursFromNoon){
-    var angleRad=(hoursFromNoon*15-90)*Math.PI/180;
-    var r=clockR-8;
-    return {x:cx+r*Math.cos(angleRad),y:cy+r*Math.sin(angleRad)};
+  /* Moon cycle: moonrise→lunar noon→moonset→lunar midnight */
+  function moonCycleAngle(t){
+    var tMs=t.getTime();
+    var lnMs=moonPeakT;  /* lunar noon */
+    var lmMs=lnMs+12*3600000;  /* lunar midnight (approx) */
+    var mrMs=moonTimes&&moonTimes.moonrise?moonTimes.moonrise.getTime():lnMs-6*3600000;
+    var msMs=moonTimes&&moonTimes.moonset?moonTimes.moonset.getTime():lnMs+6*3600000;
+    /* Handle wraparound: moonset could be before lunar noon (if moon rises in evening) */
+    if(msMs<lnMs)msMs+=24*3600000;
+    if(lmMs<msMs)lmMs+=24*3600000;
+    if(mrMs<lmMs&&mrMs<lnMs){
+      /* moonrise is before lunar noon - normal case */
+    }
+    /* Phase 1: moonrise → lunar noon (180° → 270°) */
+    var mrAdj=mrMs;
+    if(mrAdj>lnMs)mrAdj-=24*3600000;
+    if(tMs>=mrAdj&&tMs<lnMs){
+      var p=(tMs-mrAdj)/(lnMs-mrAdj);
+      return (180+p*90)*Math.PI/180;
+    }
+    /* Phase 2: lunar noon → moonset (270° → 360°) */
+    if(tMs>=lnMs&&tMs<msMs){
+      var p=(tMs-lnMs)/(msMs-lnMs);
+      return (270+p*90)*Math.PI/180;
+    }
+    /* Phase 3: moonset → lunar midnight (0° → 90°) */
+    var lmAdj=lmMs;
+    if(lmAdj<msMs)lmAdj+=24*3600000;
+    if(tMs>=msMs&&tMs<lmAdj){
+      var p=(tMs-msMs)/(lmAdj-msMs);
+      return (p*90)*Math.PI/180;
+    }
+    /* Phase 4: lunar midnight → moonrise (90° → 180°) */
+    var mrNext=mrAdj+24*3600000;
+    if(tMs>=lmAdj&&tMs<mrNext){
+      var p=(tMs-lmAdj)/(mrNext-lmAdj);
+      return (90+p*90)*Math.PI/180;
+    }
+    /* Before today's moonrise */
+    var lmPrev=lmAdj-24*3600000;
+    if(tMs>=lmPrev&&tMs<mrAdj){
+      var p=(tMs-lmPrev)/(mrAdj-lmPrev);
+      return (90+p*90)*Math.PI/180;
+    }
+    return 270*Math.PI/180;
   }
-  var moonXY=timeToMoonClockXY(moonHours);
+  var moonR=clockR-8;
+  var moonA=moonCycleAngle(now);
+  var moonXY={x:cx+moonR*Math.cos(moonA),y:cy+moonR*Math.sin(moonA)};
   var sunBelow=pos.elevation<0;
   var moonBelow=moonPos.elevation<0;
 
   /* Build temperature overlay from hourly data.
-     We use the hourly forecast for the NEXT 24 HOURS (from current time
-     forward) to create a heat gradient that colors the sun's path circle.
-     This shows how temperature will rise and fall as the sun moves
-     through its cycle, covering the full next-day forecast just like
-     the hourly forecast chart. */
+     Each hour is mapped to its clock position using the sun's cycle phase. */
   var tempPoints=[];
-  var thermalPeakHour=null;
+  var thermalPeakT=null;
   var thermalPeakTemp=-999;
-  var thermalMinHour=null;
+  var thermalMinT=null;
   var thermalMinTemp=999;
   var tempMin=999,tempMax=-999;
-  if(hourlyData&&times.solarNoon&&hourlyData.time&&hourlyData.temperature_2m){
-    var solarNoonT=times.solarNoon.getTime();
+  if(hourlyData&&hourlyData.time&&hourlyData.temperature_2m){
     var nowMs=now.getTime();
-    /* Collect hourly data for the NEXT 24 HOURS from now.
-       hoursFromNoon is relative to solar noon so the gradient maps
-       correctly to the clock position (solar noon = top). */
     for(var i=0;i<hourlyData.time.length;i++){
-      var hT=new Date(hourlyData.time[i]).getTime();
-      /* Only include hours from now forward, up to 24h ahead */
-      if(hT>=nowMs-3600000&&hT<=nowMs+24*3600000){
-        var hfn=(hT-solarNoonT)/3600000;
+      var hT=new Date(hourlyData.time[i]);
+      var hMs=hT.getTime();
+      if(hMs>=nowMs-3600000&&hMs<=nowMs+24*3600000){
         var temp=hourlyData.temperature_2m[i];
         if(temp!=null){
-          tempPoints.push({hoursFromNoon:hfn,temp:temp});
+          tempPoints.push({time:hT,temp:temp});
           if(temp<tempMin)tempMin=temp;
           if(temp>tempMax){
             tempMax=temp;
-            thermalPeakHour=hfn;
+            thermalPeakT=hT;
             thermalPeakTemp=temp;
           }
           if(temp<thermalMinTemp){
             thermalMinTemp=temp;
-            thermalMinHour=hfn;
+            thermalMinT=hT;
           }
         }
       }
     }
   }
 
-  /* Build a heat gradient for the sun path circle.
-     The gradient maps clock position (angle) to temperature color:
-     - Top (solar noon, 0h) = red (hottest)
-     - Right (sunset, +6h) = orange/yellow
-     - Bottom (solar midnight, ±12h) = blue (coldest)
-     - Left (sunrise, -6h) = orange/yellow
-     We use a conic-like gradient via multiple line segments around the
-     circle, each colored by the temperature at that hour. */
+  /* Build heat gradient segments using phase-based clock angles */
   var heatSegments='';
-  var tempColorStops='';
   if(tempPoints.length>1){
-    /* Sort by hoursFromNoon so we go in clock order */
-    tempPoints.sort(function(a,b){return a.hoursFromNoon-b.hoursFromNoon});
-    /* Build SVG path segments around the circle, each colored by temp */
-    var segs=tempPoints.length;
-    for(var i=0;i<segs;i++){
+    for(var i=0;i<tempPoints.length;i++){
       var tp=tempPoints[i];
-      var tpNext=tempPoints[(i+1)%segs];
-      /* Map temperature to color: hot=red, cool=blue */
+      var tpNext=tempPoints[(i+1)%tempPoints.length];
       var tempRange=tempMax-tempMin||1;
-      var frac=(tp.temp-tempMin)/tempRange;  /* 0=cool, 1=hot */
+      var frac=(tp.temp-tempMin)/tempRange;
       var color=tempToColor(frac);
-      /* Calculate arc segment from this hour to next */
-      var angle1=(tp.hoursFromNoon*15-90)*Math.PI/180;
-      var angle2=(tpNext.hoursFromNoon*15-90)*Math.PI/180;
-      var x1=cx+clockR*Math.cos(angle1);
-      var y1=cy+clockR*Math.sin(angle1);
-      var x2=cx+clockR*Math.cos(angle2);
-      var y2=cy+clockR*Math.sin(angle2);
-      /* Large arc flag: 1 if segment > 180°, 0 otherwise */
-      var angleDiff=Math.abs(angle2-angle1);
+      var a1=sunCycleAngle(tp.time);
+      var a2=sunCycleAngle(tpNext.time);
+      var x1=cx+clockR*Math.cos(a1);
+      var y1=cy+clockR*Math.sin(a1);
+      var x2=cx+clockR*Math.cos(a2);
+      var y2=cy+clockR*Math.sin(a2);
+      var angleDiff=Math.abs(a2-a1);
       var largeArc=angleDiff>Math.PI?1:0;
-      /* Draw a thick arc segment in the temperature color */
       heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.85" stroke-linecap="round"/>';
     }
   }
@@ -3596,7 +3644,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     /* Clock face background */
     '<circle cx="'+cx+'" cy="'+cy+'" r="'+clockR+'" fill="url(#clockBg)" opacity="0.3"/>'+
     /* Thermal peak band (orange-red highlight at hottest hour) */
-    (thermalPeakHour!==null?'<circle cx="'+timeToClockXY(thermalPeakHour).x+'" cy="'+timeToClockXY(thermalPeakHour).y+'" r="35" fill="url(#thermalPeak)"/>':'')+
+    (thermalPeakT?'<circle cx="'+sunCycleXY(thermalPeakT).x.toFixed(1)+'" cy="'+sunCycleXY(thermalPeakT).y.toFixed(1)+'" r="35" fill="url(#thermalPeak)"/>':'')+
     /* Horizon line: horizontal diameter (3 o'clock to 9 o'clock) */
     '<line x1="'+(cx-clockR)+'" y1="'+cy+'" x2="'+(cx+clockR)+'" y2="'+cy+'" stroke="#5c5c6e" stroke-width="1" stroke-dasharray="4,3"/>'+
     '<text x="'+(cx-clockR+6)+'" y="'+(cy-4)+'" font-size="7" fill="#5c5c6e" font-family="JetBrains Mono,monospace">HORIZON</text>'+
@@ -3607,133 +3655,99 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
        when it reaches those times. Previously these were at fixed 9/3
        o'clock positions, but actual sunrise/sunset times don't always
        correspond to exactly 6h from solar noon. */
-    /* SOLAR NOON: at 12 o'clock (top) - this IS exactly at solar noon */
+    /* SOLAR NOON: at 12 o'clock (top) */
     '<text x="'+cx+'" y="15" font-size="9" fill="#fbbf24" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR NOON</text>'+
     '<text x="'+cx+'" y="27" font-size="7" fill="#fbbf24" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.solarNoon)+'</text>'+
-    /* SUNSET: at actual sunset time position on the clock circle */
-    (times.sunset&&times.solarNoon?(function(){
-      var ssHfn=(times.sunset.getTime()-times.solarNoon.getTime())/3600000;
-      var ssXY=timeToClockXY(ssHfn);
-      /* Position label just outside the circle at the sunset angle */
-      var ssAngle=(ssHfn*15-90)*Math.PI/180;
-      var lblR=clockR+14;
-      var lblX=cx+lblR*Math.cos(ssAngle);
-      var lblY=cy+lblR*Math.sin(ssAngle);
-      return '<line x1="'+(cx+clockR*Math.cos(ssAngle)).toFixed(1)+'" y1="'+(cy+clockR*Math.sin(ssAngle)).toFixed(1)+'" x2="'+lblX.toFixed(1)+'" y2="'+lblY.toFixed(1)+'" stroke="#fb7185" stroke-width="1" opacity="0.5"/>'+
-        '<circle cx="'+(cx+clockR*Math.cos(ssAngle)).toFixed(1)+'" cy="'+(cy+clockR*Math.sin(ssAngle)).toFixed(1)+'" r="3" fill="#fb7185"/>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY-2).toFixed(1)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SUNSET</text>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+9).toFixed(1)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.sunset)+'</text>';
-    })():'')+
-    /* SOLAR MIDNIGHT: at 6 o'clock (bottom) - this IS exactly 12h from solar noon */
+    /* SUNSET: at 3 o'clock (right, on horizon line) */
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy-2)+'" font-size="8" fill="#fb7185" font-family="Inter,sans-serif" font-weight="700" text-anchor="start">SUNSET</text>'+
+    '<text x="'+(cx+clockR+8)+'" y="'+(cy+9)+'" font-size="7" fill="#fb7185" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="start">'+fmtSunTime(times.sunset)+'</text>'+
+    /* SOLAR MIDNIGHT: at 6 o'clock (bottom) */
     (function(){
-      var midnight=times.solarNoon?new Date(times.solarNoon.getTime()+12*3600000):null;
+      var midnight=solarMidnight;
       return '<text x="'+cx+'" y="'+(H-15)+'" font-size="9" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SOLAR MIDNIGHT</text>'+
         '<text x="'+cx+'" y="'+(H-5)+'" font-size="7" fill="#818cf8" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(midnight)+'</text>';
     })()+
-    /* SUNRISE: at actual sunrise time position on the clock circle */
-    (times.sunrise&&times.solarNoon?(function(){
-      var srHfn=(times.sunrise.getTime()-times.solarNoon.getTime())/3600000;
-      var srAngle=(srHfn*15-90)*Math.PI/180;
-      var lblR=clockR+14;
-      var lblX=cx+lblR*Math.cos(srAngle);
-      var lblY=cy+lblR*Math.sin(srAngle);
-      return '<line x1="'+(cx+clockR*Math.cos(srAngle)).toFixed(1)+'" y1="'+(cy+clockR*Math.sin(srAngle)).toFixed(1)+'" x2="'+lblX.toFixed(1)+'" y2="'+lblY.toFixed(1)+'" stroke="#34d399" stroke-width="1" opacity="0.5"/>'+
-        '<circle cx="'+(cx+clockR*Math.cos(srAngle)).toFixed(1)+'" cy="'+(cy+clockR*Math.sin(srAngle)).toFixed(1)+'" r="3" fill="#34d399"/>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY-2).toFixed(1)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SUNRISE</text>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+9).toFixed(1)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="middle">'+fmtSunTime(times.sunrise)+'</text>';
-    })():'')+
+    /* SUNRISE: at 9 o'clock (left, on horizon line) */
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy-2)+'" font-size="8" fill="#34d399" font-family="Inter,sans-serif" font-weight="700" text-anchor="end">SUNRISE</text>'+
+    '<text x="'+(cx-clockR-8)+'" y="'+(cy+9)+'" font-size="7" fill="#34d399" font-family="JetBrains Mono,monospace" font-weight="600" text-anchor="end">'+fmtSunTime(times.sunrise)+'</text>'+
     /* Civil Dawn and Civil Dusk labels at their clock positions.
-       Civil Dawn is before sunrise (lower-left, between sunrise and midnight).
-       Civil Dusk is after sunset (lower-right, between sunset and midnight). */
+       Dawn is between solar midnight (6 o'clock) and sunrise (9 o'clock).
+       Dusk is between sunset (3 o'clock) and solar midnight (6 o'clock). */
     (times.dawn&&times.solarNoon?(function(){
-      var dawnHfn=(times.dawn.getTime()-times.solarNoon.getTime())/3600000;
-      var dawnXY=timeToClockXY(dawnHfn);
+      var dawnXY=sunCycleXY(times.dawn);
       return '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DAWN</text>'+
         '<text x="'+dawnXY.x.toFixed(1)+'" y="'+(dawnXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dawn)+'</text>';
     })():'')+
     (times.dusk&&times.solarNoon?(function(){
-      var duskHfn=(times.dusk.getTime()-times.solarNoon.getTime())/3600000;
-      var duskXY=timeToClockXY(duskHfn);
+      var duskXY=sunCycleXY(times.dusk);
       return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
         '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
     })():'')+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
     /* Daylight ribbon - a thin band just inside the heat gradient that
-       shows daylight vs night. Bright golden during daylight hours
-       (dawn to dusk), dark blue during night. Smooth transitions at
-       dawn and dusk. A white dot marks the current time position so
-       the user can see how much daylight is remaining. */
+       shows daylight vs night. Uses the sun's cycle phase for positioning
+       so it aligns with the sun's clock position. */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
-      var dawnHfn=(times.dawn.getTime()-times.solarNoon.getTime())/3600000;
-      var duskHfn=(times.dusk.getTime()-times.solarNoon.getTime())/3600000;
-      var daylightRibbonR=clockR-14;  /* just inside the heat gradient */
+      var dawnMs=times.dawn.getTime();
+      var duskMs=times.dusk.getTime();
+      var daylightRibbonR=clockR-14;
       var ribbonSegs='';
-      /* Draw 48 arc segments around the full circle (every 30 min of clock time).
-         Each segment is colored based on whether it's daylight or night.
-         - Daylight (dawn to dusk): golden yellow, brightest at solar noon
-         - Night (dusk to dawn): dark blue/black
-         - Transition: smooth gradient at dawn and dusk */
+      /* Draw 48 arc segments. Each segment covers 1/48 of the sun's
+         daily cycle. We sample timestamps evenly across the cycle. */
+      var cycleStartMs=times.sunrise?times.sunrise.getTime():times.solarNoon.getTime()-6*3600000;
+      var cycleEndMs=cycleStartMs+24*3600000;
       for(var i=0;i<48;i++){
-        var hfn1=-12+(i/48)*24;  /* -12h to +12h */
-        var hfn2=-12+((i+1)/48)*24;
-        /* Determine daylight intensity at midpoint of this segment */
-        var midHfn=(hfn1+hfn2)/2;
+        var t1Ms=cycleStartMs+(i/48)*24*3600000;
+        var t2Ms=cycleStartMs+((i+1)/48)*24*3600000;
+        var midMs=(t1Ms+t2Ms)/2;
+        /* Determine daylight intensity at midpoint */
         var intensity;
-        if(midHfn>=dawnHfn&&midHfn<=duskHfn){
-          /* Daylight: intensity based on sun elevation (peak at solar noon) */
-          /* Use a sin curve: 0 at dawn/dusk, 1 at solar noon */
-          var dayProgress=(midHfn-dawnHfn)/(duskHfn-dawnHfn);  /* 0 to 1 */
-          intensity=Math.sin(dayProgress*Math.PI);  /* 0→1→0 */
+        if(midMs>=dawnMs&&midMs<=duskMs){
+          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);
+          intensity=Math.sin(dayProgress*Math.PI);
         }else{
-          intensity=0;  /* night */
+          intensity=0;
         }
-        /* Color: golden yellow for daylight, dark blue for night */
         var color;
         if(intensity>0){
-          /* Blend from dark blue (night) through orange (dawn/dusk) to bright gold (noon) */
-          var r=Math.round(30+intensity*225);   /* 30→255 */
-          var g=Math.round(40+intensity*180);   /* 40→220 */
-          var b=Math.round(80-intensity*80);    /* 80→0 */
+          var r=Math.round(30+intensity*225);
+          var g=Math.round(40+intensity*180);
+          var b=Math.round(80-intensity*80);
           color='rgb('+r+','+g+','+b+')';
         }else{
-          color='#0a0a1a';  /* dark night */
+          color='#0a0a1a';
         }
-        /* Calculate arc segment endpoints */
-        var angle1=(hfn1*15-90)*Math.PI/180;
-        var angle2=(hfn2*15-90)*Math.PI/180;
-        var x1=cx+daylightRibbonR*Math.cos(angle1);
-        var y1=cy+daylightRibbonR*Math.sin(angle1);
-        var x2=cx+daylightRibbonR*Math.cos(angle2);
-        var y2=cy+daylightRibbonR*Math.sin(angle2);
-        var largeArc=Math.abs(angle2-angle1)>Math.PI?1:0;
+        /* Use sunCycleAngle for positioning */
+        var a1=sunCycleAngle(new Date(t1Ms));
+        var a2=sunCycleAngle(new Date(t2Ms));
+        var x1=cx+daylightRibbonR*Math.cos(a1);
+        var y1=cy+daylightRibbonR*Math.sin(a1);
+        var x2=cx+daylightRibbonR*Math.cos(a2);
+        var y2=cy+daylightRibbonR*Math.sin(a2);
+        var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
         ribbonSegs+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="4" opacity="0.8" stroke-linecap="butt"/>';
       }
       /* Current time marker on the daylight ribbon */
-      var nowHfn=times.solarNoon?(now.getTime()-times.solarNoon.getTime())/3600000:0;
-      var nowAngle=(nowHfn*15-90)*Math.PI/180;
+      var nowAngle=sunCycleAngle(now);
       var nowRX=cx+daylightRibbonR*Math.cos(nowAngle);
       var nowRY=cy+daylightRibbonR*Math.sin(nowAngle);
       ribbonSegs+='<circle cx="'+nowRX.toFixed(1)+'" cy="'+nowRY.toFixed(1)+'" r="3.5" fill="#ffffff" stroke="#000" stroke-width="1" opacity="0.95"/>';
       return ribbonSegs;
     })()+
     /* Thermal peak marker (hottest hour) with temperature AND time label */
-    (thermalPeakHour!==null?(function(){
-      var xy=timeToClockXY(thermalPeakHour);
-      /* Calculate the actual time of the thermal peak */
-      var peakTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalPeakHour*3600000):null;
-      var peakTimeStr=peakTime?fmtSunTime(peakTime):'';
+    (thermalPeakT?(function(){
+      var xy=sunCycleXY(thermalPeakT);
+      var peakTimeStr=fmtSunTime(thermalPeakT);
       return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#dc2626" stroke="#fca5a5" stroke-width="2" opacity="0.95"/>'+
         '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-12).toFixed(1)+'" font-size="8" fill="#fca5a5" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalPeakTemp)+'°</text>'+
         '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y-22).toFixed(1)+'" font-size="6" fill="#fca5a5" font-family="JetBrains Mono,monospace" text-anchor="middle">'+peakTimeStr+'</text>';
     })():'')+
     /* Thermal min marker (coldest hour) with temperature AND time label */
-    (thermalMinHour!==null?(function(){
-      var xy=timeToClockXY(thermalMinHour);
-      /* Calculate the actual time of the thermal min */
-      var minTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalMinHour*3600000):null;
-      var minTimeStr=minTime?fmtSunTime(minTime):'';
+    (thermalMinT?(function(){
+      var xy=sunCycleXY(thermalMinT);
+      var minTimeStr=fmtSunTime(thermalMinT);
       return '<circle cx="'+xy.x.toFixed(1)+'" cy="'+xy.y.toFixed(1)+'" r="6" fill="#1e40af" stroke="#93c5fd" stroke-width="2" opacity="0.95"/>'+
         '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+18).toFixed(1)+'" font-size="8" fill="#93c5fd" font-family="JetBrains Mono,monospace" font-weight="700" text-anchor="middle">'+Math.round(thermalMinTemp)+'°</text>'+
         '<text x="'+xy.x.toFixed(1)+'" y="'+(xy.y+28).toFixed(1)+'" font-size="6" fill="#93c5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+minTimeStr+'</text>';
@@ -3925,14 +3939,8 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#a855f6"></span>Clock</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#0a0a1a,#f97316,#fde047,#f97316,#0a0a1a)"></span>Daylight</span>'+
       '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:linear-gradient(90deg,#1e40af,#38bdf8,#22c55e,#fbbf24,#f97316,#dc2626)"></span>Heat</span>'+
-      (thermalPeakHour!==null?(function(){
-        var peakTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalPeakHour*3600000):null;
-        return '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'° '+(peakTime?fmtSunTime(peakTime):'')+'</span>';
-      })():'')+
-      (thermalMinHour!==null?(function(){
-        var minTime=times.solarNoon?new Date(times.solarNoon.getTime()+thermalMinHour*3600000):null;
-        return '<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'° '+(minTime?fmtSunTime(minTime):'')+'</span>';
-      })():'')+
+      (thermalPeakT?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#dc2626"></span>Hot '+Math.round(thermalPeakTemp)+'° '+fmtSunTime(thermalPeakT)+'</span>':'')+
+      (thermalMinT?'<span class="sky-leg-item"><span class="sky-leg-dot" style="background:#1e40af"></span>Cold '+Math.round(thermalMinTemp)+'° '+fmtSunTime(thermalMinT)+'</span>':'')+
       '<span class="sky-leg-time">'+fmtSunTime(times.sunrise)+' → '+fmtSunTime(times.solarNoon)+' → '+fmtSunTime(times.sunset)+'</span>'+
     '</div>'+
   '</div>';
