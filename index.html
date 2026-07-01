@@ -3386,8 +3386,22 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
   var clockR=140;
   var tempR=clockR-30;
 
-  /* Calculate solar midnight (12h from solar noon) */
-  var solarMidnight=times.solarNoon?new Date(times.solarNoon.getTime()+12*3600000):null;
+  /* Calculate solar midnight. This is 12h from solar noon, but we need
+     the CORRECT one relative to 'now'. If it's before solar noon, solar
+     midnight was last night (solarNoon - 12h). If it's after solar noon,
+     solar midnight is tonight (solarNoon + 12h). */
+  var solarMidnight;
+  if(times.solarNoon){
+    if(now.getTime()<times.solarNoon.getTime()){
+      /* Before solar noon - solar midnight was last night */
+      solarMidnight=new Date(times.solarNoon.getTime()-12*3600000);
+    }else{
+      /* After solar noon - solar midnight is tonight */
+      solarMidnight=new Date(times.solarNoon.getTime()+12*3600000);
+    }
+  }else{
+    solarMidnight=null;
+  }
 
   /* Map a timestamp to a clock angle (radians, SVG convention) based on
      the sun's daily cycle phase:
@@ -3395,7 +3409,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
      - solar noon → 12 o'clock (270°)
      - sunset → 3 o'clock (0°/360°)
      - solar midnight → 6 o'clock (90°)
-     Each quarter of the cycle maps to 90° on the clock. */
+     Each quarter of the cycle maps to 90° on the clock.
+     Handles the case where 'now' is before today's sunrise (night) by
+     using the previous day's sunset and solar midnight. */
   function sunCycleAngle(t){
     if(!times.solarNoon)return 270*Math.PI/180;
     var tMs=t.getTime();
@@ -3403,29 +3419,39 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     var srMs=times.sunrise?times.sunrise.getTime():snMs-6*3600000;
     var ssMs=times.sunset?times.sunset.getTime():snMs+6*3600000;
     var smMs=solarMidnight?solarMidnight.getTime():snMs+12*3600000;
+    /* If we're before today's sunrise, we're in the night from yesterday.
+       The last sunset was yesterday's (ssMs - 24h) and solar midnight
+       is this morning's (smMs is already set to solarNoon - 12h). */
+    var ssEffMs=ssMs;
+    if(tMs<srMs&&ssMs>snMs){
+      /* Today's sunset is after solar noon (normal), but we're before
+         sunrise. Use yesterday's sunset. */
+      ssEffMs=ssMs-24*3600000;
+    }
     /* Phase 1: sunrise → solar noon (180° → 270°) */
     if(tMs>=srMs&&tMs<snMs){
       var p=(tMs-srMs)/(snMs-srMs);
       return (180+p*90)*Math.PI/180;
     }
     /* Phase 2: solar noon → sunset (270° → 360°) */
-    if(tMs>=snMs&&tMs<ssMs){
-      var p=(tMs-snMs)/(ssMs-snMs);
+    if(tMs>=snMs&&tMs<ssEffMs){
+      var p=(tMs-snMs)/(ssEffMs-snMs);
       return (270+p*90)*Math.PI/180;
     }
     /* Phase 3: sunset → solar midnight (0° → 90°) */
-    if(tMs>=ssMs&&tMs<smMs){
-      var p=(tMs-ssMs)/(smMs-ssMs);
+    if(tMs>=ssEffMs&&tMs<smMs){
+      var p=(tMs-ssEffMs)/(smMs-ssEffMs);
       return (p*90)*Math.PI/180;
     }
     /* Phase 4: solar midnight → sunrise (90° → 180°) */
     var srNextMs=srMs;
     if(srNextMs<smMs)srNextMs+=24*3600000;
-    var smPrevMs=smMs-24*3600000;
     if(tMs>=smMs&&tMs<srNextMs){
       var p=(tMs-smMs)/(srNextMs-smMs);
       return (90+p*90)*Math.PI/180;
     }
+    /* Fallback: check previous cycle (before yesterday's solar midnight) */
+    var smPrevMs=smMs-24*3600000;
     if(tMs>=smPrevMs&&tMs<srMs){
       var p=(tMs-smPrevMs)/(srMs-smPrevMs);
       return (90+p*90)*Math.PI/180;
