@@ -612,6 +612,8 @@ body.capturing .mom-mode-toggle{display:none}
 /* Moon card styling */
 .moon-card{background:rgba(196,181,253,.05)!important;border-color:rgba(196,181,253,.15)!important}
 .moon-elev{background:rgba(129,140,248,.04)!important;border-color:rgba(129,140,248,.12)!important}
+.moon-rise{background:rgba(196,181,253,.06)!important;border-color:rgba(196,181,253,.18)!important}
+.moon-set{background:rgba(129,140,248,.06)!important;border-color:rgba(129,140,248,.15)!important}
 
 /* Nowcast Engine panel */
 .nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
@@ -3300,6 +3302,22 @@ function fSun(){
           '<div class="sun-card-label">Moon Elevation</div>'+
           '<div class="sun-card-val">'+(moonPos.elevation>=0?'<span style="color:#c4b5fd">'+moonPos.elevation.toFixed(1)+'°</span>':'<span style="color:#475569">'+moonPos.elevation.toFixed(1)+'°</span>')+'</div>'+
           '<div class="sun-card-sub">'+(moonPos.elevation>=0?'Above horizon':'Below horizon')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card moon-rise">'+
+        '<div class="sun-card-icon"><i class="fas fa-arrow-up" style="color:#c4b5fd"></i></div>'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Moonrise</div>'+
+          '<div class="sun-card-val">'+(moonTimes&&moonTimes.moonrise?fmtSunTime(moonTimes.moonrise):'--:--')+'</div>'+
+          '<div class="sun-card-sub">'+(moonTimes&&moonTimes.moonrise?fmtTimeUntil(moonTimes.moonrise,now):'')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="sun-card moon-set">'+
+        '<div class="sun-card-icon"><i class="fas fa-arrow-down" style="color:#818cf8"></i></div>'+
+        '<div class="sun-card-body">'+
+          '<div class="sun-card-label">Moonset</div>'+
+          '<div class="sun-card-val">'+(moonTimes&&moonTimes.moonset?fmtSunTime(moonTimes.moonset):'--:--')+'</div>'+
+          '<div class="sun-card-sub">'+(moonTimes&&moonTimes.moonset?fmtTimeUntil(moonTimes.moonset,now):'')+'</div>'+
         '</div>'+
       '</div>'+
     '</div>'+
