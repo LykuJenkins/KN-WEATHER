@@ -3549,9 +3549,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     }
   }
 
-  /* Build heat gradient as smooth arc segments using phase-based angles.
-     Each segment is colored by the temperature at that hour. Using many
-     fine segments with round line caps creates a smooth continuous look. */
+  /* Build heat gradient as ultra-smooth arc segments.
+     Interpolate between hourly data points to create many fine segments
+     (5 sub-steps per hour) so the gradient appears continuous and smooth. */
   var heatSegments='';
   if(tempPoints.length>1){
     /* Sort by sun cycle angle */
@@ -3559,20 +3559,32 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       return sunCycleAngle(a.time)-sunCycleAngle(b.time);
     });
     var tempRange=tempMax-tempMin||1;
+    /* Interpolate sub-points between each pair of temp data points */
+    var subSteps=5;  /* 5 sub-segments per hour interval = smooth gradient */
     for(var i=0;i<tempPoints.length-1;i++){
       var tp=tempPoints[i];
       var tpNext=tempPoints[i+1];
-      var frac=(tp.temp-tempMin)/tempRange;
-      var color=tempToColor(frac);
-      var a1=sunCycleAngle(tp.time);
-      var a2=sunCycleAngle(tpNext.time);
-      var x1=cx+clockR*Math.cos(a1);
-      var y1=cy+clockR*Math.sin(a1);
-      var x2=cx+clockR*Math.cos(a2);
-      var y2=cy+clockR*Math.sin(a2);
-      var angleDiff=Math.abs(a2-a1);
-      var largeArc=angleDiff>Math.PI?1:0;
-      heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.85" stroke-linecap="round"/>';
+      for(var s=0;s<subSteps;s++){
+        var f1=s/subSteps;
+        var f2=(s+1)/subSteps;
+        /* Interpolate temperature */
+        var temp1=tp.temp+(tpNext.temp-tp.temp)*f1;
+        var temp2=tp.temp+(tpNext.temp-tp.temp)*f2;
+        /* Interpolate time for cycle angle */
+        var t1Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f1;
+        var t2Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f2;
+        var frac1=(temp1-tempMin)/tempRange;
+        var color=tempToColor(frac1);
+        var a1=sunCycleAngle(new Date(t1Ms));
+        var a2=sunCycleAngle(new Date(t2Ms));
+        var x1=cx+clockR*Math.cos(a1);
+        var y1=cy+clockR*Math.sin(a1);
+        var x2=cx+clockR*Math.cos(a2);
+        var y2=cy+clockR*Math.sin(a2);
+        var angleDiff=Math.abs(a2-a1);
+        var largeArc=angleDiff>Math.PI?1:0;
+        heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.9"/>';
+      }
     }
   }
 
@@ -3644,43 +3656,68 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     })():'')+
     /* Heat gradient on the sun path (smooth arc segments) */
     heatSegments+
-    /* Daylight ribbon - a thin band just inside the heat gradient that
-       shows daylight vs night. Uses the sun's cycle phase for positioning
-       so it aligns with the sun's clock position. Daylight is shown from
-       dawn (when the sun reaches -6° elevation) to dusk (-6° again). */
+    /* Daylight ribbon - smooth gradient ring showing daylight vs night.
+       Uses 120 fine segments for ultra-smooth gradient. Daylight from
+       dawn to dusk with peak brightness at solar noon. Night is dark
+       navy. Colors match reference: yellow(noon)→orange→red(sunset)→
+       dark purple(night)→light blue(dawn)→yellow(noon). */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
       var duskMs=times.dusk.getTime();
       var daylightRibbonR=clockR-14;
       var ribbonSegs='';
-      /* Sample 72 segments for smoother gradient. Start from solar midnight
-         (the bottom of the cycle) and go forward 24 hours. */
       var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()+12*3600000);
-      for(var i=0;i<72;i++){
-        var t1Ms=smMs+(i/72)*24*3600000;
-        var t2Ms=smMs+((i+1)/72)*24*3600000;
+      var segCount=120;  /* ultra-smooth */
+      for(var i=0;i<segCount;i++){
+        var t1Ms=smMs+(i/segCount)*24*3600000;
+        var t2Ms=smMs+((i+1)/segCount)*24*3600000;
         var midMs=(t1Ms+t2Ms)/2;
-        /* Determine daylight intensity at midpoint.
-           Daylight = between dawn and dusk.
-           Intensity peaks at solar noon (sin curve). */
         var intensity;
-        if(midMs>=dawnMs&&midMs<=duskMs){
-          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
-          intensity=Math.sin(dayProgress*Math.PI);  /* 0→1→0 */
+        var isDay=midMs>=dawnMs&&midMs<=duskMs;
+        if(isDay){
+          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);
+          intensity=Math.sin(dayProgress*Math.PI);
         }else{
-          intensity=0;  /* night */
+          intensity=0;
         }
         var color;
-        if(intensity>0){
-          var r=Math.round(30+intensity*225);
-          var g=Math.round(40+intensity*180);
-          var b=Math.round(80-intensity*80);
-          color='rgb('+r+','+g+','+b+')';
+        if(isDay){
+          /* Daylight gradient: dawn=light blue, noon=yellow, dusk=orange/red */
+          var dp=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
+          if(dp<0.15){
+            /* Dawn transition: dark purple → light blue → yellow */
+            var t=dp/0.15;
+            var r=Math.round(30+t*225);
+            var g=Math.round(40+t*180);
+            var b=Math.round(100-t*100);
+            color='rgb('+r+','+g+','+b+')';
+          }else if(dp<0.5){
+            /* Morning: light blue → yellow */
+            var t=(dp-0.15)/0.35;
+            var r=Math.round(255);
+            var g=Math.round(220-t*40);
+            var b=Math.round(0+t*0);
+            color='rgb('+r+','+g+','+b+')';
+          }else if(dp<0.85){
+            /* Afternoon: yellow → orange */
+            var t=(dp-0.5)/0.35;
+            var r=Math.round(255);
+            var g=Math.round(180-t*120);
+            var b=Math.round(0);
+            color='rgb('+r+','+g+','+b+')';
+          }else{
+            /* Dusk transition: orange → red → dark purple */
+            var t=(dp-0.85)/0.15;
+            var r=Math.round(255-t*100);
+            var g=Math.round(60-t*40);
+            var b=Math.round(0+t*60);
+            color='rgb('+r+','+g+','+b+')';
+          }
         }else{
+          /* Night: dark navy/purple */
           color='#0a0a1a';
         }
-        /* Use sunCycleAngle for positioning */
         var a1=sunCycleAngle(new Date(t1Ms));
         var a2=sunCycleAngle(new Date(t2Ms));
         var x1=cx+daylightRibbonR*Math.cos(a1);
@@ -3688,7 +3725,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var x2=cx+daylightRibbonR*Math.cos(a2);
         var y2=cy+daylightRibbonR*Math.sin(a2);
         var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
-        ribbonSegs+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="4" opacity="0.8" stroke-linecap="butt"/>';
+        ribbonSegs+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="4" opacity="0.85"/>';
       }
       /* Current time marker on the daylight ribbon */
       var nowAngle=sunCycleAngle(now);
