@@ -3392,7 +3392,7 @@ function tempToColor(frac){
    is determined by time-of-day relative to their respective "noon"
    (peak). The path is a perfect circle - no jagged lines. */
 function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
-  var W=380,H=380;  /* slightly larger to fit moonrise/set labels */
+  var W=340,H=340;
   var cx=W/2,cy=H/2;
   var clockR=140;  /* the clock circle radius - sun/moon travel on this edge */
   var tempR=clockR-30;  /* max radius for temperature curve (inside the clock) */
@@ -3597,38 +3597,6 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       return '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+15).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="Inter,sans-serif" font-weight="600" text-anchor="middle">DUSK</text>'+
         '<text x="'+duskXY.x.toFixed(1)+'" y="'+(duskXY.y+24).toFixed(1)+'" font-size="6" fill="#94a3b8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(times.dusk)+'</text>';
     })():'')+
-    /* Moonrise and Moonset tick marks on the outer edge of the clock.
-       These show when the moon rises (crosses horizon going up) and
-       sets (crosses horizon going down). Drawn as small purple markers
-       just outside the clock circle with labels. */
-    (moonTimes&&moonTimes.moonrise&&times.solarNoon?(function(){
-      var mrHfn=(moonTimes.moonrise.getTime()-times.solarNoon.getTime())/3600000;
-      var mrAngle=(mrHfn*15-90)*Math.PI/180;
-      var mrX1=cx+(clockR+2)*Math.cos(mrAngle);
-      var mrY1=cy+(clockR+2)*Math.sin(mrAngle);
-      var mrX2=cx+(clockR+10)*Math.cos(mrAngle);
-      var mrY2=cy+(clockR+10)*Math.sin(mrAngle);
-      var lblX=cx+(clockR+18)*Math.cos(mrAngle);
-      var lblY=cy+(clockR+18)*Math.sin(mrAngle);
-      return '<line x1="'+mrX1.toFixed(1)+'" y1="'+mrY1.toFixed(1)+'" x2="'+mrX2.toFixed(1)+'" y2="'+mrY2.toFixed(1)+'" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/>'+
-        '<circle cx="'+mrX2.toFixed(1)+'" cy="'+mrY2.toFixed(1)+'" r="2.5" fill="#c4b5fd"/>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+2).toFixed(1)+'" font-size="6" fill="#c4b5fd" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">MOONRISE</text>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+11).toFixed(1)+'" font-size="6" fill="#c4b5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonrise)+'</text>';
-    })():'')+
-    (moonTimes&&moonTimes.moonset&&times.solarNoon?(function(){
-      var msHfn=(moonTimes.moonset.getTime()-times.solarNoon.getTime())/3600000;
-      var msAngle=(msHfn*15-90)*Math.PI/180;
-      var msX1=cx+(clockR+2)*Math.cos(msAngle);
-      var msY1=cy+(clockR+2)*Math.sin(msAngle);
-      var msX2=cx+(clockR+10)*Math.cos(msAngle);
-      var msY2=cy+(clockR+10)*Math.sin(msAngle);
-      var lblX=cx+(clockR+18)*Math.cos(msAngle);
-      var lblY=cy+(clockR+18)*Math.sin(msAngle);
-      return '<line x1="'+msX1.toFixed(1)+'" y1="'+msY1.toFixed(1)+'" x2="'+msX2.toFixed(1)+'" y2="'+msY2.toFixed(1)+'" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round"/>'+
-        '<circle cx="'+msX2.toFixed(1)+'" cy="'+msY2.toFixed(1)+'" r="2.5" fill="#818cf8"/>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+2).toFixed(1)+'" font-size="6" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">MOONSET</text>'+
-        '<text x="'+lblX.toFixed(1)+'" y="'+(lblY+11).toFixed(1)+'" font-size="6" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonset)+'</text>';
-    })():'')+
     /* Heat gradient on the sun path (red=hot at noon, blue=cold at midnight) */
     heatSegments+
     /* Daylight ribbon - a thin band just inside the heat gradient that
@@ -3765,6 +3733,53 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var ry=cy+romanR*Math.sin(romanAngle);
         var isMajorRoman=(r%3===0);
         clockSvg+='<text x="'+rx.toFixed(1)+'" y="'+(ry+3).toFixed(1)+'" font-size="'+(isMajorRoman?9:7)+'" fill="'+(isMajorRoman?'#fb923c':'#c084fc')+'" font-family="Georgia,serif" font-weight="'+(isMajorRoman?'700':'500')+'" text-anchor="middle">'+roman[r]+'</text>';
+      }
+      /* Moonrise and Moonset markers on the sundial clock face.
+         These show when the moon is visible (above horizon) using the
+         12-hour clock positions. Drawn as colored arc segments along
+         the inner edge of the clock face, with labels. */
+      if(moonTimes&&moonTimes.moonrise&&moonTimes.moonset){
+        /* Convert moonrise/set times to 12-hour clock angles.
+           The clock shows 12-hour time, so we use hours on a 12-hour dial.
+           AM and PM both map to the same positions (12 at top, 6 at bottom). */
+        var mrEDT=new Date(moonTimes.moonrise.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+        var msEDT=new Date(moonTimes.moonset.toLocaleString('en-US',{timeZone:CONFIG.tz}));
+        var mrHours12=(mrEDT.getHours()%12)+mrEDT.getMinutes()/60;
+        var msHours12=(msEDT.getHours()%12)+msEDT.getMinutes()/60;
+        /* Clock angles: 12=0°(top), 3=90°(right), 6=180°(bottom), 9=270°(left)
+           SVG: 0°=right, so angle = (hours12/12)*360 - 90 */
+        var mrClockAngle=(mrHours12/12*360-90)*Math.PI/180;
+        var msClockAngle=(msHours12/12*360-90)*Math.PI/180;
+        /* Draw moonrise marker: purple tick from clock edge inward */
+        var mrTickR1=clockFaceR-4;
+        var mrTickR2=clockFaceR-12;
+        var mrTX1=cx+mrTickR1*Math.cos(mrClockAngle);
+        var mrTY1=cy+mrTickR1*Math.sin(mrClockAngle);
+        var mrTX2=cx+mrTickR2*Math.cos(mrClockAngle);
+        var mrTY2=cy+mrTickR2*Math.sin(mrClockAngle);
+        clockSvg+='<line x1="'+mrTX1.toFixed(1)+'" y1="'+mrTY1.toFixed(1)+'" x2="'+mrTX2.toFixed(1)+'" y2="'+mrTY2.toFixed(1)+'" stroke="#c4b5fd" stroke-width="3" stroke-linecap="round"/>';
+        clockSvg+='<circle cx="'+mrTX2.toFixed(1)+'" cy="'+mrTY2.toFixed(1)+'" r="2.5" fill="#c4b5fd"/>';
+        /* Moonrise label - positioned inside the clock face */
+        var mrLblR=clockFaceR-24;
+        var mrLblX=cx+mrLblR*Math.cos(mrClockAngle);
+        var mrLblY=cy+mrLblR*Math.sin(mrClockAngle);
+        clockSvg+='<text x="'+mrLblX.toFixed(1)+'" y="'+(mrLblY-2).toFixed(1)+'" font-size="5" fill="#c4b5fd" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">RISE</text>';
+        clockSvg+='<text x="'+mrLblX.toFixed(1)+'" y="'+(mrLblY+6).toFixed(1)+'" font-size="5" fill="#c4b5fd" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonrise)+'</text>';
+        /* Draw moonset marker: blue-purple tick from clock edge inward */
+        var msTickR1=clockFaceR-4;
+        var msTickR2=clockFaceR-12;
+        var msTX1=cx+msTickR1*Math.cos(msClockAngle);
+        var msTY1=cy+msTickR1*Math.sin(msClockAngle);
+        var msTX2=cx+msTickR2*Math.cos(msClockAngle);
+        var msTY2=cy+msTickR2*Math.sin(msClockAngle);
+        clockSvg+='<line x1="'+msTX1.toFixed(1)+'" y1="'+msTY1.toFixed(1)+'" x2="'+msTX2.toFixed(1)+'" y2="'+msTY2.toFixed(1)+'" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>';
+        clockSvg+='<circle cx="'+msTX2.toFixed(1)+'" cy="'+msTY2.toFixed(1)+'" r="2.5" fill="#818cf8"/>';
+        /* Moonset label */
+        var msLblR=clockFaceR-24;
+        var msLblX=cx+msLblR*Math.cos(msClockAngle);
+        var msLblY=cy+msLblR*Math.sin(msClockAngle);
+        clockSvg+='<text x="'+msLblX.toFixed(1)+'" y="'+(msLblY-2).toFixed(1)+'" font-size="5" fill="#818cf8" font-family="Inter,sans-serif" font-weight="700" text-anchor="middle">SET</text>';
+        clockSvg+='<text x="'+msLblX.toFixed(1)+'" y="'+(msLblY+6).toFixed(1)+'" font-size="5" fill="#818cf8" font-family="JetBrains Mono,monospace" text-anchor="middle">'+fmtSunTime(moonTimes.moonset)+'</text>';
       }
       /* Get current time in EDT for the clock hands */
       var nowEDT=new Date(now.toLocaleString('en-US',{timeZone:CONFIG.tz}));
