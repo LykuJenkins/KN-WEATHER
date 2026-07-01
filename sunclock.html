@@ -336,10 +336,10 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
      Each segment is a fine arc colored by interpolated temperature. */
   var heatSegments='';
   if(tempPoints.length>1){
-    tempPoints.sort(function(a,b){return sunCycleAngle(a.time)-sunCycleAngle(b.time)});
+    ;
     var tempRange=tempMax-tempMin||1;
     var subSteps=30;
-    for(var i=0;i<tempPoints.length-1;i++){
+    for(var i=0;i<tempPoints.length;i++){
       var tp=tempPoints[i],tpNext=tempPoints[i+1];
       for(var s=0;s<subSteps;s++){
         var f1=s/subSteps,f2=(s+1)/subSteps;

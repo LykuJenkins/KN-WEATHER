@@ -3575,20 +3575,18 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     }
   }
 
-  /* Build heat gradient as perfectly smooth continuous ring.
-     Use 30 sub-steps per hour with overlapping segments (each segment
-     extends slightly past its endpoint) so there are NO visible gaps.
-     Use stroke-linecap='butt' to avoid round-end overlaps. */
+  /* Build heat gradient as perfectly smooth continuous FULL circle ring.
+     DON'T sort by angle - keep temporal order so segments go around
+     sequentially. Handle angle wrap-around (when angle jumps from ~360°
+     back to ~0°) by adding 2π. Add wrap-around segment from last to first. */
   var heatSegments='';
   if(tempPoints.length>1){
-    tempPoints.sort(function(a,b){
-      return sunCycleAngle(a.time)-sunCycleAngle(b.time);
-    });
+    /* Keep temporal order - don't sort */
     var tempRange=tempMax-tempMin||1;
     var subSteps=30;
-    for(var i=0;i<tempPoints.length-1;i++){
+    for(var i=0;i<tempPoints.length;i++){
       var tp=tempPoints[i];
-      var tpNext=tempPoints[i+1];
+      var tpNext=tempPoints[(i+1)%tempPoints.length]; /* wrap to first for last segment */
       for(var s=0;s<subSteps;s++){
         var f1=s/subSteps;
         var f2=(s+1)/subSteps;
@@ -3599,6 +3597,9 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var color=tempToColor(frac1);
         var a1=sunCycleAngle(new Date(t1Ms));
         var a2=sunCycleAngle(new Date(t2Ms));
+        /* Handle wrap-around: if a2 < a1, the angle wrapped past 0°.
+           Add 2π to a2 so the arc goes in the correct (forward) direction. */
+        if(a2<a1-0.1)a2+=2*Math.PI;
         var x1=cx+clockR*Math.cos(a1);
         var y1=cy+clockR*Math.sin(a1);
         var x2=cx+clockR*Math.cos(a2);
@@ -3713,6 +3714,8 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         }
         var a1=sunCycleAngle(new Date(t1Ms));
         var a2=sunCycleAngle(new Date(t2Ms));
+        /* Handle wrap-around: if a2 < a1, add 2π so arc goes forward */
+        if(a2<a1-0.1)a2+=2*Math.PI;
         var x1=cx+daylightRibbonR*Math.cos(a1);
         var y1=cy+daylightRibbonR*Math.sin(a1);
         var x2=cx+daylightRibbonR*Math.cos(a2);
