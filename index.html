@@ -3064,8 +3064,9 @@ function fmtSunTime(date){
 }
 
 /* Format the time until a target date as a countdown string.
-   Returns things like "in 2h 15m", "in 45m", "passed 3h ago",
-   or "now" if within 1 minute. Uses the 'now' timestamp passed in. */
+   Returns things like "in 2h 15m", "in 45m", "in 40m", "passed 3h ago",
+   or "now" if within 1 minute. When under 1 hour, rounds to 5-minute
+   intervals (e.g. 43 min → "in 45m", 37 min → "in 35m"). */
 function fmtTimeUntil(target,now){
   if(!target||isNaN(target.getTime()))return '';
   var diffMs=target.getTime()-now.getTime();
@@ -3078,12 +3079,25 @@ function fmtTimeUntil(target,now){
   var suffix=diffMs<0?' ago':'';
   if(absDiff<60000)return 'now';
   if(days>0){
-    return sign+days+'d '+(hours%24)+'h'+suffix;
+    /* If there are days but less than 1 hour remaining, don't show 0h */
+    var remainingHours=hours%24;
+    if(remainingHours===0&&mins===0){
+      return sign+days+'d'+suffix;
+    }
+    if(remainingHours===0){
+      /* Less than 1 hour into the day - show just minutes (rounded to 5) */
+      var rounded5=Math.round(mins/5)*5;
+      return sign+days+'d '+rounded5+'m'+suffix;
+    }
+    return sign+days+'d '+remainingHours+'h'+suffix;
   }
   if(hours>0){
     return sign+hours+'h'+(mins>0?' '+mins+'m':'')+suffix;
   }
-  return sign+mins+'m'+suffix;
+  /* Under 1 hour: round to 5-minute intervals */
+  var roundedMins=Math.round(mins/5)*5;
+  if(roundedMins===0)roundedMins=5;  /* avoid showing "0m" */
+  return sign+roundedMins+'m'+suffix;
 }
 
 /* ── Moon calculations ──────────────────────────────────────────────────────
