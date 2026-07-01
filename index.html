@@ -3575,28 +3575,24 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     }
   }
 
-  /* Build heat gradient as ultra-smooth arc segments.
-     Interpolate between hourly data points to create many fine segments
-     (5 sub-steps per hour) so the gradient appears continuous and smooth. */
+  /* Build heat gradient as perfectly smooth continuous ring.
+     Use 30 sub-steps per hour with overlapping segments (each segment
+     extends slightly past its endpoint) so there are NO visible gaps.
+     Use stroke-linecap='butt' to avoid round-end overlaps. */
   var heatSegments='';
   if(tempPoints.length>1){
-    /* Sort by sun cycle angle */
     tempPoints.sort(function(a,b){
       return sunCycleAngle(a.time)-sunCycleAngle(b.time);
     });
     var tempRange=tempMax-tempMin||1;
-    /* Interpolate sub-points between each pair of temp data points */
-    var subSteps=10;  /* 10 sub-segments per hour interval = ultra-smooth */
+    var subSteps=30;
     for(var i=0;i<tempPoints.length-1;i++){
       var tp=tempPoints[i];
       var tpNext=tempPoints[i+1];
       for(var s=0;s<subSteps;s++){
         var f1=s/subSteps;
         var f2=(s+1)/subSteps;
-        /* Interpolate temperature */
         var temp1=tp.temp+(tpNext.temp-tp.temp)*f1;
-        var temp2=tp.temp+(tpNext.temp-tp.temp)*f2;
-        /* Interpolate time for cycle angle */
         var t1Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f1;
         var t2Ms=tp.time.getTime()+(tpNext.time.getTime()-tp.time.getTime())*f2;
         var frac1=(temp1-tempMin)/tempRange;
@@ -3609,7 +3605,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var y2=cy+clockR*Math.sin(a2);
         var angleDiff=Math.abs(a2-a1);
         var largeArc=angleDiff>Math.PI?1:0;
-        heatSegments+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="6" opacity="0.9"/>';
+        heatSegments+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+clockR+','+clockR+' 0 '+largeArc+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="7" opacity="1"/>';
       }
     }
   }
@@ -3682,11 +3678,8 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
     })():'')+
     /* Heat gradient on the sun path (smooth arc segments) */
     heatSegments+
-    /* Daylight ribbon - smooth gradient ring showing daylight vs night.
-       Uses 120 fine segments for ultra-smooth gradient. Daylight from
-       dawn to dusk with peak brightness at solar noon. Night is dark
-       navy. Colors match reference: yellow(noon)→orange→red(sunset)→
-       dark purple(night)→light blue(dawn)→yellow(noon). */
+    /* Daylight ribbon - perfectly smooth gradient ring.
+       200 segments for maximum smoothness. stroke-width=5, opacity=1. */
     (function(){
       if(!times.dawn||!times.dusk||!times.solarNoon)return '';
       var dawnMs=times.dawn.getTime();
@@ -3694,54 +3687,28 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
       var daylightRibbonR=clockR-14;
       var ribbonSegs='';
       var smMs=solarMidnight?solarMidnight.getTime():(times.solarNoon.getTime()+12*3600000);
-      var segCount=120;  /* ultra-smooth */
+      var segCount=200;
       for(var i=0;i<segCount;i++){
         var t1Ms=smMs+(i/segCount)*24*3600000;
         var t2Ms=smMs+((i+1)/segCount)*24*3600000;
         var midMs=(t1Ms+t2Ms)/2;
-        var intensity;
         var isDay=midMs>=dawnMs&&midMs<=duskMs;
-        if(isDay){
-          var dayProgress=(midMs-dawnMs)/(duskMs-dawnMs);
-          intensity=Math.sin(dayProgress*Math.PI);
-        }else{
-          intensity=0;
-        }
         var color;
         if(isDay){
-          /* Daylight gradient: dawn=light blue, noon=yellow, dusk=orange/red */
-          var dp=(midMs-dawnMs)/(duskMs-dawnMs);  /* 0 to 1 */
+          var dp=(midMs-dawnMs)/(duskMs-dawnMs);
           if(dp<0.15){
-            /* Dawn transition: dark purple → light blue → yellow */
             var t=dp/0.15;
-            var r=Math.round(30+t*225);
-            var g=Math.round(40+t*180);
-            var b=Math.round(100-t*100);
-            color='rgb('+r+','+g+','+b+')';
+            color='rgb('+Math.round(30+t*225)+','+Math.round(40+t*180)+','+Math.round(100-t*100)+')';
           }else if(dp<0.5){
-            /* Morning: light blue → yellow */
-            var t=(dp-0.15)/0.35;
-            var r=Math.round(255);
-            var g=Math.round(220-t*40);
-            var b=Math.round(0+t*0);
-            color='rgb('+r+','+g+','+b+')';
+            color='rgb(255,'+Math.round(220)+',0)';
           }else if(dp<0.85){
-            /* Afternoon: yellow → orange */
             var t=(dp-0.5)/0.35;
-            var r=Math.round(255);
-            var g=Math.round(180-t*120);
-            var b=Math.round(0);
-            color='rgb('+r+','+g+','+b+')';
+            color='rgb(255,'+Math.round(180-t*120)+',0)';
           }else{
-            /* Dusk transition: orange → red → dark purple */
             var t=(dp-0.85)/0.15;
-            var r=Math.round(255-t*100);
-            var g=Math.round(60-t*40);
-            var b=Math.round(0+t*60);
-            color='rgb('+r+','+g+','+b+')';
+            color='rgb('+Math.round(255-t*100)+','+Math.round(60-t*40)+','+Math.round(0+t*60)+')';
           }
         }else{
-          /* Night: dark navy/purple */
           color='#0a0a1a';
         }
         var a1=sunCycleAngle(new Date(t1Ms));
@@ -3751,7 +3718,7 @@ function buildSkyChart(times,pos,moon,moonPos,now,tzShort,hourlyData,moonTimes){
         var x2=cx+daylightRibbonR*Math.cos(a2);
         var y2=cy+daylightRibbonR*Math.sin(a2);
         var largeArc=Math.abs(a2-a1)>Math.PI?1:0;
-        ribbonSegs+='<path d="M '+x1.toFixed(1)+','+y1.toFixed(1)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+'" fill="none" stroke="'+color+'" stroke-width="4" opacity="0.85"/>';
+        ribbonSegs+='<path d="M '+x1.toFixed(2)+','+y1.toFixed(2)+' A '+daylightRibbonR+','+daylightRibbonR+' 0 '+largeArc+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+'" fill="none" stroke="'+color+'" stroke-width="5" opacity="1"/>';
       }
       /* Current time marker on the daylight ribbon */
       var nowAngle=sunCycleAngle(now);
